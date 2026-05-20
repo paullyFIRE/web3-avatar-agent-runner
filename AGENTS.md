@@ -62,6 +62,7 @@ internal/
 - **Set `heartbeat_at` immediately**: any running state without heartbeat gets marked stale by the poller within 5 minutes. Set on every state transition + run a periodic goroutine.
 - **Template composition in Go is brittle**: `ParseFS("*.html")` put all named templates in one namespace. `{{define "content"}}` in multiple files = last-one-wins. Use self-contained standalone templates instead.
 - **`asdf` requires `asdf set`** (not `asdf local`) on newer versions. Add `.tool-versions` to pin Go version.
+- **Portless wraps the binary**: run `portless agent-runner ./agent-runner start` for `https://agent-runner.localhost`. The daemon auto-detects `$PORT`, `$HOST`, and `$PORTLESS_URL` env vars. Install portless globally via `npm install -g portless`.
 
 ## Config
 

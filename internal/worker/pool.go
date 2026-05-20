@@ -199,6 +199,12 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 	})
 	log = log.With("worktree", wtPath)
 
+	if job.Attempt == 1 {
+		if err := p.gh.CommentIssue(issueNumber, "🤖 Starting work on this issue..."); err != nil {
+			log.Warn("failed to comment start on issue", "error", err)
+		}
+	}
+
 	issue, err := p.gh.GetIssue(issueNumber)
 	if err != nil {
 		p.handleFailure(ctx, job, fmt.Errorf("get issue: %w", err))
@@ -531,6 +537,19 @@ func (p *Pool) handleFailure(ctx context.Context, job *db.Job, err error) {
 			FinishedAt: timePtr(time.Now()),
 		})
 		log.Error("job failed", "error", errStr)
+
+			switch job.JobType {
+		case "implement_issue":
+			if cerr := p.gh.CommentIssue(job.IssueNumber, fmt.Sprintf("🤖 Failed to implement: %s", errStr)); cerr != nil {
+				log.Warn("failed to comment failure on issue", "error", cerr)
+			}
+		case "apply_pr_feedback":
+			if job.PRNumber != nil {
+				if cerr := p.gh.CommentPR(*job.PRNumber, fmt.Sprintf("🤖 Failed to apply feedback: %s", errStr)); cerr != nil {
+					log.Warn("failed to comment failure on pr", "error", cerr)
+				}
+			}
+		}
 	}
 }
 

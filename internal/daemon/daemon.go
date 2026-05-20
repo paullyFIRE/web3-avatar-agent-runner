@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -95,6 +97,18 @@ func (d *Daemon) Start() error {
 	go d.poller.Run(d.ctx)
 
 	dashAddr := d.cfg.DashboardAddr
+
+	if portStr := os.Getenv("PORT"); portStr != "" {
+		if port, err := strconv.Atoi(portStr); err == nil {
+			host := os.Getenv("HOST")
+			if host == "" {
+				host = "127.0.0.1"
+			}
+			dashAddr = net.JoinHostPort(host, strconv.Itoa(port))
+			slog.Info("dashboard using portless", "port", port, "host", host)
+		}
+	}
+
 	dashServer := &http.Server{
 		Addr:    dashAddr,
 		Handler: d.dash.Routes(),
@@ -102,6 +116,9 @@ func (d *Daemon) Start() error {
 
 	go func() {
 		slog.Info("dashboard listening", "addr", dashAddr)
+		if u := os.Getenv("PORTLESS_URL"); u != "" {
+			slog.Info("dashboard URL (portless)", "url", u)
+		}
 		if err := dashServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("dashboard error", "error", err)
 		}

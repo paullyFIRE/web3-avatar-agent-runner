@@ -137,6 +137,12 @@ func doctor() error {
 		return err
 	}())
 
+	if _, err := exec.LookPath("portless"); err != nil {
+		fmt.Printf("  ~ portless (optional): not installed — run 'npm install -g portless' for https://agent-runner.localhost\n")
+	} else {
+		fmt.Printf("  ✓ portless (optional)\n")
+	}
+
 	if err := cfg.ExpandPaths(); err == nil {
 		check("workspace root writable", func() error {
 			if err := os.MkdirAll(cfg.WorkspaceRoot, 0755); err != nil {

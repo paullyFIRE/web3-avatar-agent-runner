@@ -67,6 +67,8 @@ internal/
 - **`CleanWorktree` ≠ `ResetToBase`**: `git checkout -- .` + `git clean -fd` only removes unstaged/untracked files — old **commits** remain. Use `git reset --hard origin/master` to wipe everything before re-running an agent on retry.
 - **Dashboard FuncMap needs runtime config**: `template.FuncMap` is evaluated at init time. To pass config (e.g., repo URLs) into templates, build the FuncMap dynamically in `New()` using `parseTemplates(cfg)`.
 - **Post-agent task idempotency**: never assume a phase failed just because the daemon died. Before committing, check `git rev-list HEAD ^origin/master`. Before pushing, check `git ls-remote --heads`. Before creating a PR, check if `job.PRNumber` is already set.
+- **`IsWorktreeDir` needs deep validation**: `git rev-parse --git-dir` just reads the `.git` file but doesn't verify the resolved path exists. Stat the resolved git dir path too.
+- **State audit via state_logs table**: every `UpdateJob` that changes `State` or sets `LastError` automatically logs to `state_logs`. The dashboard job detail page shows a timeline sidebar with timestamps so you can tell if an error is stale or fresh.
 
 ## Config
 

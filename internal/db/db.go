@@ -52,8 +52,8 @@ func (d *DB) migrate() error {
 		last_error TEXT,
 		model TEXT,
 		trigger_comment_id TEXT,
-		created_at DATETIME NOT NULL DEFAULT (datetime('now')),
-		updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		created_at DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
+		updated_at DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
 		started_at DATETIME,
 		finished_at DATETIME
 	);
@@ -71,7 +71,7 @@ func (d *DB) migrate() error {
 		pr_number INTEGER NOT NULL,
 		comment_id TEXT NOT NULL,
 		sender_login TEXT NOT NULL,
-		processed_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		processed_at DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
 		UNIQUE(repo_owner, repo_name, comment_id)
 	);
 
@@ -80,7 +80,7 @@ func (d *DB) migrate() error {
 	CREATE TABLE IF NOT EXISTS poll_state (
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL,
-		updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+		updated_at DATETIME NOT NULL DEFAULT (datetime('now', 'localtime'))
 	);
 
 	CREATE TABLE IF NOT EXISTS job_attempts (
@@ -101,12 +101,24 @@ func (d *DB) migrate() error {
 		job_id INTEGER NOT NULL,
 		pid INTEGER,
 		state TEXT,
-		started_at DATETIME NOT NULL DEFAULT (datetime('now')),
+		started_at DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
 		heartbeat_at DATETIME,
 		model TEXT,
 		worktree_path TEXT,
 		FOREIGN KEY (job_id) REFERENCES jobs(id)
 	);
+
+	CREATE TABLE IF NOT EXISTS state_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		job_id INTEGER NOT NULL,
+		from_state TEXT,
+		to_state TEXT NOT NULL,
+		message TEXT,
+		created_at DATETIME NOT NULL DEFAULT (datetime('now', 'localtime')),
+		FOREIGN KEY (job_id) REFERENCES jobs(id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_state_logs_job ON state_logs(job_id);
 	`
 
 	_, err := d.conn.Exec(schema)
@@ -185,7 +197,7 @@ func (d *DB) ClaimNextJob(ctx context.Context) (*Job, error) {
 	row := tx.QueryRowContext(ctx, `
 		SELECT id FROM jobs
 		WHERE state = 'queued'
-		   OR (state = 'retry_scheduled' AND (next_retry_at IS NULL OR next_retry_at <= datetime('now')))
+		   OR (state = 'retry_scheduled' AND (next_retry_at IS NULL OR next_retry_at <= datetime('now', 'localtime')))
 		ORDER BY created_at ASC
 		LIMIT 1
 	`)
@@ -204,7 +216,7 @@ func (d *DB) ClaimNextJob(ctx context.Context) (*Job, error) {
 	var nextRetry, heartbeat, started, finished sql.NullString
 
 	err = tx.QueryRowContext(ctx, `
-		UPDATE jobs SET state = 'preparing_worktree', attempt = attempt + 1, started_at = datetime('now'), updated_at = datetime('now')
+		UPDATE jobs SET state = 'preparing_worktree', attempt = attempt + 1, started_at = datetime('now', 'localtime'), updated_at = datetime('now', 'localtime')
 		WHERE id = ?
 		RETURNING id, repo_owner, repo_name, issue_number, pr_number, branch, worktree_path, job_type, state, current_phase,
 			attempt, max_attempts, next_retry_at, pid, heartbeat_at, last_log_line, last_error, model, trigger_comment_id,
@@ -319,7 +331,19 @@ type JobUpdate struct {
 }
 
 func (d *DB) UpdateJob(ctx context.Context, id int64, u JobUpdate) error {
-	sets := "updated_at = datetime('now')"
+	if u.State != nil {
+		var currentState string
+		d.conn.QueryRowContext(ctx, `SELECT state FROM jobs WHERE id = ?`, id).Scan(&currentState)
+		d.LogState(ctx, id, currentState, *u.State, "")
+	}
+	if u.LastError != nil && *u.LastError != "" {
+		var currentState string
+		d.conn.QueryRowContext(ctx, `SELECT state FROM jobs WHERE id = ?`, id).Scan(&currentState)
+		msg := "error: " + *u.LastError
+		d.LogState(ctx, id, currentState, currentState, msg)
+	}
+
+	sets := "updated_at = datetime('now', 'localtime')"
 	args := []any{}
 
 	if u.State != nil {
@@ -456,7 +480,7 @@ func (d *DB) GetStaleJobs(ctx context.Context) ([]*Job, error) {
 			'preparing_worktree', 'running_agent', 'validating', 'committing', 'pushing', 'creating_pr',
 			'applying_pr_feedback', 'cleanup_running'
 		)
-		AND (heartbeat_at IS NULL OR heartbeat_at <= datetime('now', '-5 minutes'))
+		AND (heartbeat_at IS NULL OR heartbeat_at <= datetime('now', 'localtime', '-5 minutes'))
 	`)
 	if err != nil {
 		return nil, err
@@ -535,8 +559,8 @@ func (d *DB) GetPollState(ctx context.Context, key string) (string, error) {
 
 func (d *DB) SetPollState(ctx context.Context, key, value string) error {
 	_, err := d.conn.ExecContext(ctx, `
-		INSERT INTO poll_state (key, value, updated_at) VALUES (?, ?, datetime('now'))
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+		INSERT INTO poll_state (key, value, updated_at) VALUES (?, ?, datetime('now', 'localtime'))
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now', 'localtime')
 	`, key, value)
 	return err
 }
@@ -556,14 +580,14 @@ type JobAttempt struct {
 func (d *DB) RecordJobAttempt(ctx context.Context, jobID int64, attempt int, state, logPath string) error {
 	_, err := d.conn.ExecContext(ctx, `
 		INSERT INTO job_attempts (job_id, attempt, state, log_path, started_at)
-		VALUES (?, ?, ?, ?, datetime('now'))
+		VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
 	`, jobID, attempt, state, logPath)
 	return err
 }
 
 func (d *DB) FinishJobAttempt(ctx context.Context, jobID int64, attempt int, exitCode int, errStr string) error {
 	_, err := d.conn.ExecContext(ctx, `
-		UPDATE job_attempts SET exit_code = ?, error = ?, finished_at = datetime('now')
+		UPDATE job_attempts SET exit_code = ?, error = ?, finished_at = datetime('now', 'localtime')
 		WHERE job_id = ? AND attempt = ?
 	`, exitCode, errStr, jobID, attempt)
 	return err
@@ -583,7 +607,7 @@ type Agent struct {
 func (d *DB) RegisterAgent(ctx context.Context, jobID int64, pid int, model, worktreePath string) (*Agent, error) {
 	row := d.conn.QueryRowContext(ctx, `
 		INSERT INTO agents (job_id, pid, state, model, worktree_path, heartbeat_at)
-		VALUES (?, ?, 'running', ?, ?, datetime('now'))
+		VALUES (?, ?, 'running', ?, ?, datetime('now', 'localtime'))
 		RETURNING id, job_id, pid, state, started_at, heartbeat_at, model, worktree_path
 	`, jobID, pid, model, worktreePath)
 
@@ -601,8 +625,67 @@ func (d *DB) RegisterAgent(ctx context.Context, jobID int64, pid int, model, wor
 }
 
 func (d *DB) UpdateAgentHeartbeat(ctx context.Context, agentID int64) error {
-	_, err := d.conn.ExecContext(ctx, `UPDATE agents SET heartbeat_at = datetime('now') WHERE id = ?`, agentID)
+	_, err := d.conn.ExecContext(ctx, `UPDATE agents SET heartbeat_at = datetime('now', 'localtime') WHERE id = ?`, agentID)
 	return err
+}
+
+type StateLog struct {
+	ID        int64      `json:"id"`
+	JobID     int64      `json:"job_id"`
+	FromState *string    `json:"from_state"`
+	ToState   string     `json:"to_state"`
+	Message   *string    `json:"message"`
+	CreatedAt time.Time  `json:"created_at"`
+}
+
+func (d *DB) LogState(ctx context.Context, jobID int64, fromState, toState, message string) error {
+	var f, m *string
+	if fromState != "" {
+		f = &fromState
+	}
+	if message != "" {
+		m = &message
+	}
+	_, err := d.conn.ExecContext(ctx, `
+		INSERT INTO state_logs (job_id, from_state, to_state, message)
+		VALUES (?, ?, ?, ?)
+	`, jobID, f, toState, m)
+	return err
+}
+
+func (d *DB) GetStateLogs(ctx context.Context, jobID int64) ([]StateLog, error) {
+	rows, err := d.conn.QueryContext(ctx, `
+		SELECT id, job_id, from_state, to_state, message, created_at
+		FROM state_logs
+		WHERE job_id = ?
+		ORDER BY id ASC
+	`, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("query state logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []StateLog
+	for rows.Next() {
+		var l StateLog
+		var from, msg sql.NullString
+		var created sql.NullString
+		if err := rows.Scan(&l.ID, &l.JobID, &from, &l.ToState, &msg, &created); err != nil {
+			return nil, fmt.Errorf("scan state log: %w", err)
+		}
+		if from.Valid {
+			l.FromState = &from.String
+		}
+		if msg.Valid {
+			l.Message = &msg.String
+		}
+		if created.Valid {
+			t, _ := time.Parse("2006-01-02 15:04:05", created.String)
+			l.CreatedAt = t
+		}
+		logs = append(logs, l)
+	}
+	return logs, rows.Err()
 }
 
 func scanJob(row interface{ Scan(...any) error }) (*Job, error) {

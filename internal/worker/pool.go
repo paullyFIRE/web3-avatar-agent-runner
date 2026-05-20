@@ -170,8 +170,11 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 
 	log.Info("starting implement flow", "phase", phase, "attempt", job.Attempt)
 
+	fromState := job.State
+
 	hb := time.Now()
 	if phase == "" {
+		p.db.LogState(ctx, job.ID, fromState, "preparing_worktree", "")
 		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("preparing_worktree"), HeartbeatAt: &hb})
 	}
 
@@ -637,3 +640,10 @@ func (p *Pool) buildCommitMsg(job *db.Job, summary string) string {
 func strPtr(s string) *string { return &s }
 
 func timePtr(t time.Time) *time.Time { return &t }
+
+func (p *Pool) updateJobState(ctx context.Context, jobID int64, u db.JobUpdate, fromState, message string) {
+	if u.State != nil {
+		p.db.LogState(ctx, jobID, fromState, *u.State, message)
+	}
+	p.db.UpdateJob(ctx, jobID, u)
+}

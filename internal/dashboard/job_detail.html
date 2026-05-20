@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent Runner - Job #{{.ID}}</title>
+<title>Agent Runner - Job #{{.Job.ID}}</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 </head>
@@ -18,44 +18,78 @@
 <div class="mb-4">
   <a href="/jobs" class="text-blue-600 hover:underline">&larr; Back to Jobs</a>
 </div>
-<div class="bg-white rounded-lg shadow p-4 mb-4">
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-    <div><div class="text-gray-500">ID</div><div class="font-mono">{{.ID}}</div></div>
-    <div><div class="text-gray-500">Issue</div><div class="font-mono"><a href="{{issueURL .IssueNumber}}" class="text-blue-600 hover:underline">#{{.IssueNumber}}</a></div></div>
-    <div><div class="text-gray-500">PR</div><div class="font-mono">{{if .PRNumber}}<a href="{{prURL .PRNumber}}" class="text-blue-600 hover:underline">#{{.PRNumber}}</a>{{else}}-{{end}}</div></div>
-    <div><div class="text-gray-500">State</div><div><span class="px-2 py-0.5 rounded text-xs {{jobClass .State}}">{{.State}}</span></div></div>
-    <div><div class="text-gray-500">Type</div><div>{{.JobType}}</div></div>
-    <div><div class="text-gray-500">Attempt</div><div>{{.Attempt}}/{{.MaxAttempts}}</div></div>
-    <div><div class="text-gray-500">Created</div><div>{{formatTime .CreatedAt}}</div></div>
-    <div><div class="text-gray-500">Duration</div><div>{{formatDuration .StartedAt .FinishedAt}}</div></div>
-    {{if .Branch}}<div><div class="text-gray-500">Branch</div><div class="font-mono text-xs">{{.Branch}}</div></div>{{end}}
-    {{if .Model}}<div><div class="text-gray-500">Model</div><div class="font-mono text-xs">{{.Model}}</div></div>{{end}}
-    {{if .WorktreePath}}<div><div class="text-gray-500">Worktree</div><div class="font-mono text-xs">{{.WorktreePath}}</div></div>{{end}}
+
+<div class="flex gap-4">
+  <div class="flex-1">
+    <div class="bg-white rounded-lg shadow p-4 mb-4">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div><div class="text-gray-500">ID</div><div class="font-mono">{{.Job.ID}}</div></div>
+        <div><div class="text-gray-500">Issue</div><div class="font-mono"><a href="{{issueURL .Job.IssueNumber}}" class="text-blue-600 hover:underline">#{{.Job.IssueNumber}}</a></div></div>
+        <div><div class="text-gray-500">PR</div><div class="font-mono">{{if .Job.PRNumber}}<a href="{{prURL .Job.PRNumber}}" class="text-blue-600 hover:underline">#{{.Job.PRNumber}}</a>{{else}}-{{end}}</div></div>
+        <div><div class="text-gray-500">State</div><div><span class="px-2 py-0.5 rounded text-xs {{jobClass .Job.State}}">{{.Job.State}}</span></div></div>
+        <div><div class="text-gray-500">Type</div><div>{{.Job.JobType}}</div></div>
+        <div><div class="text-gray-500">Attempt</div><div>{{.Job.Attempt}}/{{.Job.MaxAttempts}}</div></div>
+        <div><div class="text-gray-500">Created</div><div>{{formatTime .Job.CreatedAt}}</div></div>
+        <div><div class="text-gray-500">Duration</div><div>{{formatDuration .Job.StartedAt .Job.FinishedAt}}</div></div>
+        {{if .Job.Branch}}<div><div class="text-gray-500">Branch</div><div class="font-mono text-xs">{{.Job.Branch}}</div></div>{{end}}
+        {{if .Job.Model}}<div><div class="text-gray-500">Model</div><div class="font-mono text-xs">{{.Job.Model}}</div></div>{{end}}
+        {{if .Job.WorktreePath}}<div><div class="text-gray-500">Worktree</div><div class="font-mono text-xs">{{.Job.WorktreePath}}</div></div>{{end}}
+      </div>
+      {{if .Job.LastError}}
+      <div class="mt-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+        <strong>Error:</strong> {{.Job.LastError}}
+      </div>
+      {{end}}
+      <div class="mt-4 flex gap-2">
+        {{if or (eq .Job.State "failed") (eq .Job.State "blocked") (eq .Job.State "retry_scheduled") (eq .Job.State "needs_clarification")}}<form action="/jobs/{{.Job.ID}}/retry" method="POST"><button class="px-3 py-1 rounded bg-yellow-500 text-white text-sm hover:bg-yellow-600">Retry</button></form>{{end}}
+        {{if or (eq .Job.State "queued") (eq .Job.State "running_agent") (eq .Job.State "preparing_worktree") (eq .Job.State "retry_scheduled")}}<form action="/jobs/{{.Job.ID}}/cancel" method="POST"><button class="px-3 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600">Cancel</button></form>{{end}}
+        <form action="/jobs/{{.Job.ID}}/cleanup" method="POST"><button class="px-3 py-1 rounded bg-gray-500 text-white text-sm hover:bg-gray-600">Force Cleanup</button></form>
+      </div>
+    </div>
+
+    <div class="bg-gray-900 rounded-lg shadow p-4 mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-white font-semibold text-sm">Agent Logs</h2>
+        <span class="text-gray-400 text-xs">Auto-updates every 3s</span>
+      </div>
+      <pre id="log-viewer" class="text-green-400 text-xs font-mono whitespace-pre-wrap h-64 overflow-y-auto p-3 bg-gray-950 rounded">Loading logs...</pre>
+    </div>
   </div>
-  {{if .LastError}}
-  <div class="mt-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-    <strong>Error:</strong> {{.LastError}}
-  </div>
-  {{end}}
-  <div class="mt-4 flex gap-2">
-    {{if or (eq .State "failed") (eq .State "blocked") (eq .State "retry_scheduled") (eq .State "needs_clarification")}}<form action="/jobs/{{.ID}}/retry" method="POST"><button class="px-3 py-1 rounded bg-yellow-500 text-white text-sm hover:bg-yellow-600">Retry</button></form>{{end}}
-    {{if or (eq .State "queued") (eq .State "running_agent") (eq .State "preparing_worktree") (eq .State "retry_scheduled")}}<form action="/jobs/{{.ID}}/cancel" method="POST"><button class="px-3 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600">Cancel</button></form>{{end}}
-    <form action="/jobs/{{.ID}}/cleanup" method="POST"><button class="px-3 py-1 rounded bg-gray-500 text-white text-sm hover:bg-gray-600">Force Cleanup</button></form>
+
+  <div class="w-96">
+    <div class="bg-white rounded-lg shadow p-4">
+      <h2 class="font-semibold text-sm mb-3">State Timeline</h2>
+      <div class="space-y-0">
+        {{range .Logs}}
+        <div class="flex gap-3 py-2 border-l-2 {{if or (hasPrefix .ToState "failed") (hasPrefix .ToState "blocked") (hasPrefix .ToState "error")}}border-red-400{{else if eq .ToState "waiting_for_review"}}border-blue-400{{else if eq .ToState "merged"}}border-green-400{{else}}border-gray-300{{end}} pl-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              {{if .FromState}}
+              <span class="text-xs font-mono {{jobClass .FromState}} px-1 rounded">{{.FromState}}</span>
+              <span class="text-gray-400 text-xs">→</span>
+              {{end}}
+              <span class="text-xs font-mono {{jobClass .ToState}} px-1 rounded">{{.ToState}}</span>
+            </div>
+            {{if .Message}}
+            <div class="text-xs text-gray-600 mt-1 break-words {{if hasPrefix .ToState "failed"}}text-red-600{{end}}">{{.Message}}</div>
+            {{end}}
+            <div class="text-xs text-gray-400 mt-0.5">{{formatTime .CreatedAt}}</div>
+          </div>
+        </div>
+        {{else}}
+        <div class="text-sm text-gray-500 py-4 text-center">No state changes recorded yet</div>
+        {{end}}
+      </div>
+    </div>
   </div>
 </div>
-<div class="bg-gray-900 rounded-lg shadow p-4">
-  <div class="flex items-center justify-between mb-2">
-    <h2 class="text-white font-semibold text-sm">Logs</h2>
-    <span class="text-gray-400 text-xs">Auto-updates every 3s</span>
-  </div>
-  <pre id="log-viewer" class="text-green-400 text-xs font-mono whitespace-pre-wrap h-96 overflow-y-auto p-3 bg-gray-950 rounded">Loading logs...</pre>
-</div>
+
 <script>
 (function() {
   var viewer = document.getElementById('log-viewer');
   if (viewer) {
     setInterval(function() {
-      fetch('/jobs/{{.ID}}/logs')
+      fetch('/jobs/{{.Job.ID}}/logs')
         .then(function(r) { return r.text(); })
         .then(function(text) {
           if (text) {

@@ -51,11 +51,21 @@ func parseTemplates(cfg *config.Config) *template.Template {
 				return "bg-gray-100 text-gray-800"
 			}
 		},
-		"formatTime": func(t *time.Time) string {
-			if t == nil {
+		"formatTime": func(t interface{}) string {
+			switch v := t.(type) {
+			case *time.Time:
+				if v == nil {
+					return "-"
+				}
+				return v.Format("2006-01-02 15:04:05")
+			case time.Time:
+				if v.IsZero() {
+					return "-"
+				}
+				return v.Format("2006-01-02 15:04:05")
+			default:
 				return "-"
 			}
-			return t.Format("2006-01-02 15:04:05")
 		},
 		"formatDuration": func(started, finished *time.Time) string {
 			if started == nil || started.IsZero() {
@@ -86,6 +96,9 @@ func parseTemplates(cfg *config.Config) *template.Template {
 		"json": func(v interface{}) string {
 			b, _ := json.Marshal(v)
 			return string(b)
+		},
+		"hasPrefix": func(s, prefix string) bool {
+			return strings.HasPrefix(s, prefix)
 		},
 	}).ParseFS(templateFS, "*.html"))
 }
@@ -196,7 +209,15 @@ func (s *Server) jobDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.renderTemplate(w, "job_detail", job)
+	stateLogs, err := s.db.GetStateLogs(r.Context(), id)
+	if err != nil {
+		slog.Error("get state logs", "error", err)
+	}
+
+	s.renderTemplate(w, "job_detail", map[string]interface{}{
+		"Job":  job,
+		"Logs": stateLogs,
+	})
 }
 
 func (s *Server) jobLogs(w http.ResponseWriter, r *http.Request) {

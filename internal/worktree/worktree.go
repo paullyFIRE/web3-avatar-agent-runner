@@ -280,8 +280,21 @@ func (m *Manager) IsWorktreeDir(path string) bool {
 	if err != nil || !info.IsDir() {
 		return false
 	}
-	_, err = m.gitIn(path, "rev-parse", "--git-dir")
-	return err == nil
+	gitDir, err := m.gitIn(path, "rev-parse", "--git-dir")
+	if err != nil {
+		return false
+	}
+	gitDir = strings.TrimSpace(gitDir)
+	if gitDir == "" {
+		return false
+	}
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(path, gitDir)
+	}
+	if _, err := os.Stat(gitDir); err != nil {
+		return false
+	}
+	return true
 }
 
 func BranchName(issueNumber int, title string) string {

@@ -24,30 +24,33 @@ Local daemon that polls GitHub issues, runs OpenCode Go agents to implement fixe
 ## CLI commands
 
 ```
-agent-runner doctor        # verify prerequisites
-agent-runner start          # start daemon
-agent-runner status         # daemon health summary
-agent-runner jobs           # list all jobs
-agent-runner logs <job_id>  # tail logs for a job
+agent-runner doctor                  # verify prerequisites
+agent-runner start                    # start daemon
+agent-runner status                   # daemon health summary
+agent-runner jobs                     # list all jobs
+agent-runner logs <job_id>            # tail logs for a job
 agent-runner retry <job_id>
 agent-runner cancel <job_id>
 agent-runner cleanup <job_id>
+agent-runner plist <install|uninstall|path>  # manage launchd service
 ```
 
-## Implementation order (inferred from SPEC structure)
+## Project structure
 
-1. Module init + config loading (YAML + env overrides)
-2. SQLite schema + migrations
-3. GitHub polling (`gh issue list`, `gh pr list`, `gh api`)
-4. Worktree management (clone, fetch, worktree add/remove, branch naming `agent/issue-<N>-<slug>`)
-5. Job queue + worker pool (max 2, atomic SQLite claim)
-6. Agent launch (`opencode run --model ... --prompt-file`)
-7. Commit/push/PR creation flow
-8. Retry logic
-9. PR feedback loop (poll comments, enqueue feedback job)
-10. Cleanup (worktree removal on merge/close)
-11. Dashboard (HTMX + SSE)
-12. `launchd` plist + install/uninstall
+```
+cmd/agent-runner/main.go
+internal/
+  config/   YAML config + env overrides
+  db/       SQLite schema + queries for jobs, comments, agents, attempts, poll_state
+  github/   gh CLI wrapper (issues, PRs, comments, PR creation)
+  worktree/ clone, fetch, worktree add/remove, branch naming agent/issue-<N>-<slug>
+  agent/    opencode process runner with prompt generation
+  worker/   job pool (max 2), implement/feedback/cleanup flows, retry logic
+  poller/   30s ticker polls issues, PRs, comments, stale jobs
+  daemon/   orchestrator with graceful shutdown, dashboard HTTP server
+  dashboard/ Tailwind CDN + HTMX server-rendered routes
+  cli/      command dispatch for doctor, start, status, jobs, logs, retry, cancel, cleanup, plist
+```
 
 ## Config
 

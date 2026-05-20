@@ -1,0 +1,230 @@
+package agent
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/paullyFIRE/web3-avatar-agent-runner/internal/config"
+)
+
+type Result struct {
+	Summary            string
+	FilesChanged       []string
+	ValidationNotes    string
+	NeedsClarification bool
+	ClarificationMsg   string
+}
+
+type Runner struct {
+	cfg *config.Config
+}
+
+func NewRunner(cfg *config.Config) *Runner {
+	return &Runner{cfg: cfg}
+}
+
+func (r *Runner) Run(ctx context.Context, worktreePath, promptFile string) (*Result, error) {
+	cmd := exec.CommandContext(ctx, r.cfg.OpenCodeBin,
+		"run",
+		"-m", r.cfg.OpenCodeModel,
+		"-f", promptFile,
+		"--dangerously-skip-permissions",
+		"Implement the changes described in the attached prompt file.",
+	)
+	cmd.Dir = worktreePath
+	cmd.Env = append(os.Environ(),
+		"OPENCODE_ALLOW_NETWORK=true",
+	)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	output := stdout.String()
+	errOutput := stderr.String()
+
+	result := &Result{}
+
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("agent cancelled: %w", ctx.Err())
+		}
+		return nil, fmt.Errorf("agent exited with error: %w\nstdout: %s\nstderr: %s", err, output, errOutput)
+	}
+
+	result.Summary = parseSummary(output)
+	result.FilesChanged = parseFilesChanged(output)
+	result.ValidationNotes = parseValidationNotes(output)
+	result.NeedsClarification = strings.Contains(output, "clarification") ||
+		strings.Contains(strings.ToLower(output), "ambiguous")
+	if result.NeedsClarification {
+		result.ClarificationMsg = extractClarification(output)
+	}
+
+	if errOutput != "" {
+		if result.ValidationNotes != "" {
+			result.ValidationNotes += "\n"
+		}
+		result.ValidationNotes += "stderr: " + errOutput
+	}
+
+	return result, nil
+}
+
+func (r *Runner) GenerateImplementPrompt(issueNumber int, title, body string, comments []string, branch string) string {
+	var commentsBlock string
+	for i, c := range comments {
+		commentsBlock += fmt.Sprintf("Comment %d:\n%s\n\n", i+1, c)
+	}
+
+	return fmt.Sprintf(`You are running locally inside a git worktree for GitHub issue #%d.
+
+Repository:
+%s/%s
+
+Base branch:
+%s
+
+Current branch:
+%s
+
+Issue title:
+%s
+
+Issue body:
+%s
+
+Issue comments:
+%s
+
+Rules:
+- Follow repository conventions and existing code style.
+- Inspect relevant files before editing.
+- Implement the smallest safe fix.
+- Add or update tests when appropriate.
+- Do not modify unrelated files.
+- Do not commit.
+- Do not push.
+- Do not create a PR.
+- Do not request reviewers.
+- Never request paullyFIRE as reviewer.
+- Do not edit protected files unless the issue explicitly requires it.
+- If the issue is ambiguous, stop and write a clear clarification request.
+- Network access is allowed.
+- Repo pre-commit and pre-push hooks will run outside this agent.
+- Do not bypass hooks.
+- Prefer simple, maintainable changes over broad refactors.
+- Avoid new dependencies unless clearly justified.
+
+Return:
+- implementation summary;
+- files changed;
+- validation notes if you ran anything manually;
+- whether clarification is needed.
+`,
+		issueNumber,
+		r.cfg.GitHubOwner, r.cfg.GitHubRepo,
+		r.cfg.BaseBranch,
+		branch,
+		title,
+		body,
+		commentsBlock,
+	)
+}
+
+func (r *Runner) GenerateFeedbackPrompt(prNumber, issueNumber int, comment string, title, body string) string {
+	return fmt.Sprintf(`You are running locally inside an existing PR branch for GitHub PR #%d, issue #%d.
+
+Authorized commenter paullyFIRE posted this PR timeline comment:
+
+%s
+
+Existing PR context:
+%s
+
+%s
+
+Rules:
+- Address only the requested feedback.
+- Preserve prior implementation unless a change is required.
+- Do not commit.
+- Do not push.
+- Do not create a new PR.
+- Do not request reviewers.
+- Never request paullyFIRE as reviewer.
+- Follow repository conventions.
+- Keep the diff minimal.
+- Do not bypass hooks.
+
+Return:
+- summary of changes;
+- files changed;
+- whether additional clarification is needed.
+`,
+		prNumber, issueNumber,
+		comment,
+		title,
+		body,
+	)
+}
+
+func parseSummary(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- implementation summary:") {
+			return strings.TrimPrefix(trimmed, "- implementation summary:")
+		}
+		if strings.HasPrefix(trimmed, "implementation summary:") {
+			return strings.TrimPrefix(trimmed, "implementation summary:")
+		}
+	}
+	return output
+}
+
+func parseFilesChanged(output string) []string {
+	var files []string
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- files changed:") {
+			f := strings.TrimPrefix(trimmed, "- files changed:")
+			for _, part := range strings.Split(f, ",") {
+				files = append(files, strings.TrimSpace(part))
+			}
+		}
+	}
+	return files
+}
+
+func parseValidationNotes(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- validation notes:") {
+			return strings.TrimPrefix(trimmed, "- validation notes:")
+		}
+	}
+	return ""
+}
+
+func extractClarification(output string) string {
+	lines := strings.Split(output, "\n")
+	var msgLines []string
+	recording := false
+	for _, line := range lines {
+		if strings.Contains(line, "clarification") || strings.Contains(line, "ambiguous") {
+			recording = true
+		}
+		if recording {
+			msgLines = append(msgLines, line)
+		}
+		if len(msgLines) > 10 {
+			break
+		}
+	}
+	return strings.Join(msgLines, "\n")
+}

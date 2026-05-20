@@ -1,0 +1,72 @@
+{{define "job_detail"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Runner - Job #{{.ID}}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body class="bg-gray-50">
+<nav class="bg-gray-900 text-white px-6 py-3 flex items-center gap-6">
+  <a href="/dashboard" class="font-bold text-lg">Agent Runner</a>
+  <a href="/dashboard" class="hover:text-gray-300">Dashboard</a>
+  <a href="/jobs" class="hover:text-gray-300">Jobs</a>
+  <a href="/agents" class="hover:text-gray-300">Agents</a>
+</nav>
+<main class="p-6">
+<div class="mb-4">
+  <a href="/jobs" class="text-blue-600 hover:underline">&larr; Back to Jobs</a>
+</div>
+<div class="bg-white rounded-lg shadow p-4 mb-4">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+    <div><div class="text-gray-500">ID</div><div class="font-mono">{{.ID}}</div></div>
+    <div><div class="text-gray-500">Issue</div><div class="font-mono">#{{.IssueNumber}}</div></div>
+    <div><div class="text-gray-500">PR</div><div class="font-mono">{{if .PRNumber}}#{{.PRNumber}}{{else}}-{{end}}</div></div>
+    <div><div class="text-gray-500">State</div><div><span class="px-2 py-0.5 rounded text-xs {{jobClass .State}}">{{.State}}</span></div></div>
+    <div><div class="text-gray-500">Type</div><div>{{.JobType}}</div></div>
+    <div><div class="text-gray-500">Attempt</div><div>{{.Attempt}}/{{.MaxAttempts}}</div></div>
+    <div><div class="text-gray-500">Created</div><div>{{formatTime .CreatedAt}}</div></div>
+    <div><div class="text-gray-500">Duration</div><div>{{formatDuration .StartedAt .FinishedAt}}</div></div>
+    {{if .Branch}}<div><div class="text-gray-500">Branch</div><div class="font-mono text-xs">{{.Branch}}</div></div>{{end}}
+    {{if .Model}}<div><div class="text-gray-500">Model</div><div class="font-mono text-xs">{{.Model}}</div></div>{{end}}
+    {{if .WorktreePath}}<div><div class="text-gray-500">Worktree</div><div class="font-mono text-xs">{{.WorktreePath}}</div></div>{{end}}
+  </div>
+  {{if .LastError}}
+  <div class="mt-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+    <strong>Error:</strong> {{.LastError}}
+  </div>
+  {{end}}
+  <div class="mt-4 flex gap-2">
+    {{if eq .State "failed"}}<form action="/jobs/{{.ID}}/retry" method="POST"><button class="px-3 py-1 rounded bg-yellow-500 text-white text-sm hover:bg-yellow-600">Retry</button></form>{{end}}
+    {{if or (eq .State "queued") (eq .State "running_agent") (eq .State "preparing_worktree") (eq .State "retry_scheduled")}}<form action="/jobs/{{.ID}}/cancel" method="POST"><button class="px-3 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600">Cancel</button></form>{{end}}
+    <form action="/jobs/{{.ID}}/cleanup" method="POST"><button class="px-3 py-1 rounded bg-gray-500 text-white text-sm hover:bg-gray-600">Force Cleanup</button></form>
+  </div>
+</div>
+<div class="bg-gray-900 rounded-lg shadow p-4">
+  <div class="flex items-center justify-between mb-2">
+    <h2 class="text-white font-semibold text-sm">Logs</h2>
+    <span class="text-gray-400 text-xs">Auto-updates every 3s</span>
+  </div>
+  <pre id="log-viewer" class="text-green-400 text-xs font-mono whitespace-pre-wrap h-96 overflow-y-auto p-3 bg-gray-950 rounded">Loading logs...</pre>
+</div>
+<script>
+(function() {
+  var viewer = document.getElementById('log-viewer');
+  if (viewer) {
+    setInterval(function() {
+      fetch('/jobs/{{.ID}}/logs')
+        .then(function(r) { return r.text(); })
+        .then(function(text) {
+          if (text && !text.includes('No logs')) {
+            viewer.textContent = text;
+            viewer.scrollTop = viewer.scrollHeight;
+          }
+        });
+    }, 3000);
+  }
+})();
+</script>
+</main>
+</body>
+</html>{{end}}

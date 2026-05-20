@@ -1,3 +1,4 @@
 agent-runner
 *.log
 .runner.sqlite
+.opencode-prompt.md

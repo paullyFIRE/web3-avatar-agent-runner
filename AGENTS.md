@@ -52,6 +52,17 @@ internal/
   cli/      command dispatch for doctor, start, status, jobs, logs, retry, cancel, cleanup, plist
 ```
 
+## Gotchas (hard-earned)
+
+- **opencode requires `run` subcommand**: `opencode run -m model -f file.md --dangerously-skip-permissions "message"` — omitting `run` drops into TUI mode and hangs.
+- **Don't pipe prompts via stdin**: opencode doesn't read messages from stdin. Use `-f promptFile.md` to attach the prompt file.
+- **`gh pr create` has no `--json`**: parse the URL from stdout instead. Use `--body-file -` and pipe body via stdin for multi-line PR bodies.
+- **`modernc.org/sqlite` doesn't support `FOR UPDATE`**: remove it — SQLite's serialized transactions suffice for atomic job claiming.
+- **Always `git worktree prune` + `-f`**: stale worktree entries crash `worktree add`. Prune before add, and use `-f` liberally.
+- **Set `heartbeat_at` immediately**: any running state without heartbeat gets marked stale by the poller within 5 minutes. Set on every state transition + run a periodic goroutine.
+- **Template composition in Go is brittle**: `ParseFS("*.html")` put all named templates in one namespace. `{{define "content"}}` in multiple files = last-one-wins. Use self-contained standalone templates instead.
+- **`asdf` requires `asdf set`** (not `asdf local`) on newer versions. Add `.tool-versions` to pin Go version.
+
 ## Config
 
 Loaded from `~/.config/web3-avatar-agent-runner/config.yaml`. Environment variables override.

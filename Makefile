@@ -11,7 +11,11 @@ doctor: build
 	./$(BINARY) doctor
 
 run: build
-	./$(BINARY) start
+	@if command -v portless >/dev/null 2>&1; then \
+		portless agent-runner ./$(BINARY) start; \
+	else \
+		./$(BINARY) start; \
+	fi
 
 status: build
 	./$(BINARY) status

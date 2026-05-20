@@ -94,7 +94,7 @@ func (m *Manager) ReuseWorktree(issueNumber int, branch string) (string, error) 
 
 	m.gitIn(repoDir, "worktree", "prune")
 
-	if _, err := os.Stat(wtDir); err == nil {
+	if _, err := os.Stat(wtDir); err == nil && m.IsWorktreeDir(wtDir) {
 		_, err := m.gitIn(wtDir, "checkout", branch)
 		if err != nil {
 			_, err = m.gitIn(wtDir, "checkout", "-b", branch, fmt.Sprintf("origin/%s", m.cfg.BaseBranch))
@@ -114,6 +114,10 @@ func (m *Manager) ReuseWorktree(issueNumber int, branch string) (string, error) 
 
 	if err := os.MkdirAll(filepath.Dir(wtDir), 0755); err != nil {
 		return "", fmt.Errorf("create worktrees dir: %w", err)
+	}
+
+	if _, err := os.Stat(wtDir); err == nil {
+		os.RemoveAll(wtDir)
 	}
 
 	err := m.checkBranchExists(repoDir, branch)
@@ -183,6 +187,51 @@ func (m *Manager) HasChanges(worktreePath string) (bool, error) {
 		return false, err
 	}
 	return strings.TrimSpace(out) != "", nil
+}
+
+func (m *Manager) CleanWorktree(worktreePath string) error {
+	m.gitIn(worktreePath, "checkout", "--", ".")
+	_, err := m.gitIn(worktreePath, "clean", "-fd")
+	if err != nil {
+		return fmt.Errorf("clean worktree: %w", err)
+	}
+	return nil
+}
+
+func (m *Manager) ResetToBase(worktreePath string) error {
+	_, err := m.gitIn(worktreePath, "reset", "--hard", fmt.Sprintf("origin/%s", m.cfg.BaseBranch))
+	if err != nil {
+		return fmt.Errorf("reset to base: %w", err)
+	}
+	_, err = m.gitIn(worktreePath, "clean", "-fd")
+	if err != nil {
+		return fmt.Errorf("clean after reset: %w", err)
+	}
+	return nil
+}
+
+func (m *Manager) HasCommit(worktreePath, commitMsgPrefix string) (bool, error) {
+	out, err := m.gitIn(worktreePath, "log", "-1", "--format=%s%n%b")
+	if err != nil {
+		return false, nil
+	}
+	return strings.Contains(out, commitMsgPrefix), nil
+}
+
+func (m *Manager) HasLocalCommits(worktreePath string) (bool, error) {
+	out, err := m.gitIn(worktreePath, "rev-list", "HEAD", fmt.Sprintf("^origin/%s", m.cfg.BaseBranch), "--count")
+	if err != nil {
+		return false, nil
+	}
+	return strings.TrimSpace(out) != "0", nil
+}
+
+func (m *Manager) RemoteBranchExists(branch string) bool {
+	out, err := m.gitIn(m.repoDir(), "ls-remote", "--heads", "origin", branch)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(out) != ""
 }
 
 func (m *Manager) GetChangedFiles(worktreePath string) ([]string, error) {

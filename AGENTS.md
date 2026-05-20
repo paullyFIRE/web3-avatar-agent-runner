@@ -60,9 +60,15 @@ internal/
 - **`modernc.org/sqlite` doesn't support `FOR UPDATE`**: remove it — SQLite's serialized transactions suffice for atomic job claiming.
 - **Always `git worktree prune` + `-f`**: stale worktree entries crash `worktree add`. Prune before add, and use `-f` liberally.
 - **Set `heartbeat_at` immediately**: any running state without heartbeat gets marked stale by the poller within 5 minutes. Set on every state transition + run a periodic goroutine.
-- **Template composition in Go is brittle**: `ParseFS("*.html")` put all named templates in one namespace. `{{define "content"}}` in multiple files = last-one-wins. Use self-contained standalone templates instead.
+- **Template composition in Go is brittle**: `ParseFS("*.html")` put all named templates in one namespace. `{{define "content"}}` in multiple files = last-one-wins. Use self-contained standalone templates instead. If templates need config data, build the FuncMap dynamically in `New()` instead of at package level.
 - **`asdf` requires `asdf set`** (not `asdf local`) on newer versions. Add `.tool-versions` to pin Go version.
 - **Portless wraps the binary**: run `portless agent-runner ./agent-runner start` for `https://agent-runner.localhost`. The daemon auto-detects `$PORT`, `$HOST`, and `$PORTLESS_URL` env vars. Install portless globally via `npm install -g portless`.
+- **Worktree `.git` file breaks on repo re-clone**: worktree dirs contain a `.git` file pointing to `.git/worktrees/<name>/` in the main repo. If the main repo is re-cloned, that path dies. Always call `IsWorktreeDir` before using an existing worktree dir; if invalid, `os.RemoveAll` the stale dir and create fresh.
+- **`CleanWorktree` ≠ `ResetToBase`**: `git checkout -- .` + `git clean -fd` only removes unstaged/untracked files — old **commits** remain. Use `git reset --hard origin/master` to wipe everything before re-running an agent on retry.
+- **Dashboard FuncMap needs runtime config**: `template.FuncMap` is evaluated at init time. To pass config (e.g., repo URLs) into templates, build the FuncMap dynamically in `New()` using `parseTemplates(cfg)`.
+- **Post-agent task idempotency**: never assume a phase failed just because the daemon died. Before committing, check `git rev-list HEAD ^origin/master`. Before pushing, check `git ls-remote --heads`. Before creating a PR, check if `job.PRNumber` is already set.
+
+## Config
 
 ## Config
 

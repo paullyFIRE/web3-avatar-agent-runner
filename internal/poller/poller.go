@@ -110,6 +110,44 @@ func (p *Poller) pollPRsAndCleanup(ctx context.Context) error {
 		return fmt.Errorf("list prs: %w", err)
 	}
 
+	prByNumber := make(map[int]github.PR)
+	for _, pr := range prs {
+		prByNumber[pr.Number] = pr
+	}
+
+	waitingJobs, err := p.db.GetJobsByState(ctx, "waiting_for_review")
+	if err == nil {
+		for _, job := range waitingJobs {
+			if job.PRNumber == nil {
+				continue
+			}
+			pr, ok := prByNumber[*job.PRNumber]
+			if !ok {
+				continue
+			}
+			switch pr.State {
+			case "MERGED":
+				p.db.UpdateJob(ctx, job.ID, db.JobUpdate{
+					State:      strPtr("merged"),
+					FinishedAt: timePtr(time.Now()),
+				})
+				p.logger.Info("pr merged", "job_id", job.ID, "pr", pr.Number)
+				if p.cfg.CleanupOnMerge {
+					p.pool.EnqueueCleanupJob(job.IssueNumber, pr.Number)
+				}
+			case "CLOSED":
+				p.db.UpdateJob(ctx, job.ID, db.JobUpdate{
+					State:      strPtr("closed_without_merge"),
+					FinishedAt: timePtr(time.Now()),
+				})
+				p.logger.Info("pr closed without merge", "job_id", job.ID, "pr", pr.Number)
+				if p.cfg.CleanupOnClosed {
+					p.pool.EnqueueCleanupJob(job.IssueNumber, pr.Number)
+				}
+			}
+		}
+	}
+
 	for _, pr := range prs {
 		if !strings.HasPrefix(pr.HeadRefName, "agent/issue-") {
 			continue

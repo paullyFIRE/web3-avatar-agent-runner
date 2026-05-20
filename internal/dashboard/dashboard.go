@@ -22,12 +22,72 @@ import (
 )
 
 type Server struct {
-	cfg *config.Config
-	db  *db.DB
+	cfg        *config.Config
+	db         *db.DB
+	templates  *template.Template
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
-	return &Server{cfg: cfg, db: database}
+	s := &Server{cfg: cfg, db: database}
+	s.templates = parseTemplates(cfg)
+	return s
+}
+
+func parseTemplates(cfg *config.Config) *template.Template {
+	return template.Must(template.New("").Funcs(template.FuncMap{
+		"jobClass": func(state string) string {
+			switch state {
+			case "queued", "retry_scheduled":
+				return "bg-yellow-100 text-yellow-800"
+			case "waiting_for_review":
+				return "bg-blue-100 text-blue-800"
+			case "failed", "blocked", "closed_without_merge":
+				return "bg-red-100 text-red-800"
+			case "merged", "cleanup_done":
+				return "bg-green-100 text-green-800"
+			case "running_agent", "preparing_worktree", "validating", "committing", "pushing", "creating_pr", "applying_pr_feedback", "cleanup_running":
+				return "bg-purple-100 text-purple-800"
+			default:
+				return "bg-gray-100 text-gray-800"
+			}
+		},
+		"formatTime": func(t *time.Time) string {
+			if t == nil {
+				return "-"
+			}
+			return t.Format("2006-01-02 15:04:05")
+		},
+		"formatDuration": func(started, finished *time.Time) string {
+			if started == nil || started.IsZero() {
+				return "-"
+			}
+			end := time.Now()
+			if finished != nil && !finished.IsZero() {
+				end = *finished
+			}
+			d := end.Sub(*started)
+			if d < 0 {
+				return "-"
+			}
+			if d < time.Minute {
+				return fmt.Sprintf("%ds", int(d.Seconds()))
+			}
+			if d < time.Hour {
+				return fmt.Sprintf("%dm", int(d.Minutes()))
+			}
+			return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+		},
+		"issueURL": func(n int) string {
+			return fmt.Sprintf("https://github.com/%s/%s/issues/%d", cfg.GitHubOwner, cfg.GitHubRepo, n)
+		},
+		"prURL": func(n int) string {
+			return fmt.Sprintf("https://github.com/%s/%s/pull/%d", cfg.GitHubOwner, cfg.GitHubRepo, n)
+		},
+		"json": func(v interface{}) string {
+			b, _ := json.Marshal(v)
+			return string(b)
+		},
+	}).ParseFS(templateFS, "*.html"))
 }
 
 func (s *Server) Routes() http.Handler {
@@ -95,7 +155,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	data.RecentJobs = jobs
 
-	renderTemplate(w, "dashboard", data)
+	s.renderTemplate(w, "dashboard", data)
 }
 
 func (s *Server) jobsList(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +175,7 @@ func (s *Server) jobsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderTemplate(w, "jobs", jobs)
+	s.renderTemplate(w, "jobs", jobs)
 }
 
 func (s *Server) jobDetail(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +196,7 @@ func (s *Server) jobDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderTemplate(w, "job_detail", job)
+	s.renderTemplate(w, "job_detail", job)
 }
 
 func (s *Server) jobLogs(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +268,7 @@ func (s *Server) agentsList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	renderTemplate(w, "agents", jobs)
+	s.renderTemplate(w, "agents", jobs)
 }
 
 func (s *Server) jobRetry(w http.ResponseWriter, r *http.Request) {
@@ -225,7 +285,7 @@ func (s *Server) jobRetry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if job.State != "failed" && job.State != "blocked" {
+	if job.State != "failed" && job.State != "blocked" && job.State != "retry_scheduled" && job.State != "needs_clarification" {
 		http.Error(w, "job is not in a retriable state", http.StatusBadRequest)
 		return
 	}
@@ -273,9 +333,9 @@ func strPtr(s string) *string { return &s }
 
 func timePtr(t time.Time) *time.Time { return &t }
 
-func renderTemplate(w http.ResponseWriter, name string, data interface{}) {
+func (s *Server) renderTemplate(w http.ResponseWriter, name string, data interface{}) {
 	var buf bytes.Buffer
-	if err := templates.ExecuteTemplate(&buf, name, data); err != nil {
+	if err := s.templates.ExecuteTemplate(&buf, name, data); err != nil {
 		slog.Error("render template", "name", name, "error", err)
 		http.Error(w, fmt.Sprintf("template error: %s", err), http.StatusInternalServerError)
 		return
@@ -286,49 +346,3 @@ func renderTemplate(w http.ResponseWriter, name string, data interface{}) {
 
 //go:embed *.html
 var templateFS embed.FS
-
-var templates = template.Must(template.New("").Funcs(template.FuncMap{
-	"jobClass": func(state string) string {
-		switch state {
-		case "queued", "retry_scheduled":
-			return "bg-yellow-100 text-yellow-800"
-		case "waiting_for_review":
-			return "bg-blue-100 text-blue-800"
-		case "failed", "blocked", "closed_without_merge":
-			return "bg-red-100 text-red-800"
-		case "merged", "cleanup_done":
-			return "bg-green-100 text-green-800"
-		case "running_agent", "preparing_worktree", "validating", "committing", "pushing", "creating_pr", "applying_pr_feedback", "cleanup_running":
-			return "bg-purple-100 text-purple-800"
-		default:
-			return "bg-gray-100 text-gray-800"
-		}
-	},
-	"formatTime": func(t *time.Time) string {
-		if t == nil {
-			return "-"
-		}
-		return t.Format("2006-01-02 15:04:05")
-	},
-	"formatDuration": func(started, finished *time.Time) string {
-		if started == nil {
-			return "-"
-		}
-		end := time.Now()
-		if finished != nil {
-			end = *finished
-		}
-		d := end.Sub(*started)
-		if d < time.Minute {
-			return fmt.Sprintf("%ds", int(d.Seconds()))
-		}
-		if d < time.Hour {
-			return fmt.Sprintf("%dm", int(d.Minutes()))
-		}
-		return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
-	},
-	"json": func(v interface{}) string {
-		b, _ := json.Marshal(v)
-		return string(b)
-	},
-}).ParseFS(templateFS, "*.html"))

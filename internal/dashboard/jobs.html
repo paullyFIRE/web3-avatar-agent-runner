@@ -41,8 +41,8 @@
     <tbody>
       {{range .}}
       <tr class="border-t hover:bg-gray-50">
-        <td class="px-4 py-2">{{.ID}}</td>
-        <td class="px-4 py-2">#{{.IssueNumber}}{{if .PRNumber}} -> PR #{{.PRNumber}}{{end}}</td>
+        <td class="px-4 py-2"><a href="/jobs/{{.ID}}" class="text-blue-600 hover:underline">{{.ID}}</a></td>
+        <td class="px-4 py-2"><a href="{{issueURL .IssueNumber}}" class="text-blue-600 hover:underline">#{{.IssueNumber}}</a>{{if .PRNumber}} <span class="text-gray-400">→</span> <a href="{{prURL .PRNumber}}" class="text-blue-600 hover:underline">PR #{{.PRNumber}}</a>{{end}}</td>
         <td class="px-4 py-2">{{.JobType}}</td>
         <td class="px-4 py-2"><span class="px-2 py-0.5 rounded text-xs {{jobClass .State}}">{{.State}}</span></td>
         <td class="px-4 py-2">{{.Attempt}}/{{.MaxAttempts}}</td>

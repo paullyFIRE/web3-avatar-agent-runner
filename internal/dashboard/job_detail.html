@@ -21,8 +21,8 @@
 <div class="bg-white rounded-lg shadow p-4 mb-4">
   <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
     <div><div class="text-gray-500">ID</div><div class="font-mono">{{.ID}}</div></div>
-    <div><div class="text-gray-500">Issue</div><div class="font-mono">#{{.IssueNumber}}</div></div>
-    <div><div class="text-gray-500">PR</div><div class="font-mono">{{if .PRNumber}}#{{.PRNumber}}{{else}}-{{end}}</div></div>
+    <div><div class="text-gray-500">Issue</div><div class="font-mono"><a href="{{issueURL .IssueNumber}}" class="text-blue-600 hover:underline">#{{.IssueNumber}}</a></div></div>
+    <div><div class="text-gray-500">PR</div><div class="font-mono">{{if .PRNumber}}<a href="{{prURL .PRNumber}}" class="text-blue-600 hover:underline">#{{.PRNumber}}</a>{{else}}-{{end}}</div></div>
     <div><div class="text-gray-500">State</div><div><span class="px-2 py-0.5 rounded text-xs {{jobClass .State}}">{{.State}}</span></div></div>
     <div><div class="text-gray-500">Type</div><div>{{.JobType}}</div></div>
     <div><div class="text-gray-500">Attempt</div><div>{{.Attempt}}/{{.MaxAttempts}}</div></div>
@@ -38,7 +38,7 @@
   </div>
   {{end}}
   <div class="mt-4 flex gap-2">
-    {{if eq .State "failed"}}<form action="/jobs/{{.ID}}/retry" method="POST"><button class="px-3 py-1 rounded bg-yellow-500 text-white text-sm hover:bg-yellow-600">Retry</button></form>{{end}}
+    {{if or (eq .State "failed") (eq .State "blocked") (eq .State "retry_scheduled") (eq .State "needs_clarification")}}<form action="/jobs/{{.ID}}/retry" method="POST"><button class="px-3 py-1 rounded bg-yellow-500 text-white text-sm hover:bg-yellow-600">Retry</button></form>{{end}}
     {{if or (eq .State "queued") (eq .State "running_agent") (eq .State "preparing_worktree") (eq .State "retry_scheduled")}}<form action="/jobs/{{.ID}}/cancel" method="POST"><button class="px-3 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600">Cancel</button></form>{{end}}
     <form action="/jobs/{{.ID}}/cleanup" method="POST"><button class="px-3 py-1 rounded bg-gray-500 text-white text-sm hover:bg-gray-600">Force Cleanup</button></form>
   </div>
@@ -58,7 +58,7 @@
       fetch('/jobs/{{.ID}}/logs')
         .then(function(r) { return r.text(); })
         .then(function(text) {
-          if (text && !text.includes('No logs')) {
+          if (text) {
             viewer.textContent = text;
             viewer.scrollTop = viewer.scrollHeight;
           }

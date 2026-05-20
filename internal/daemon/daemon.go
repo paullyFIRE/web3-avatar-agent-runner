@@ -117,7 +117,7 @@ func (d *Daemon) Start() error {
 	go func() {
 		slog.Info("dashboard listening", "addr", dashAddr)
 		if u := os.Getenv("PORTLESS_URL"); u != "" {
-			slog.Info("dashboard URL (portless)", "url", u)
+			fmt.Println(u)
 		}
 		if err := dashServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("dashboard error", "error", err)

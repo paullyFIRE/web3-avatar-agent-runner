@@ -17,6 +17,8 @@ type Result struct {
 	ValidationNotes    string
 	NeedsClarification bool
 	ClarificationMsg   string
+	RawOutput          string
+	RawError           string
 }
 
 type Runner struct {
@@ -49,7 +51,10 @@ func (r *Runner) Run(ctx context.Context, worktreePath, promptFile string) (*Res
 	output := stdout.String()
 	errOutput := stderr.String()
 
-	result := &Result{}
+	result := &Result{
+		RawOutput: output,
+		RawError:  errOutput,
+	}
 
 	if err != nil {
 		if ctx.Err() != nil {

@@ -163,152 +163,228 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 	log := p.logger.With("job_id", job.ID, "issue", job.IssueNumber)
 	issueNumber := job.IssueNumber
 
-	log.Info("starting implement flow")
+	phase := ""
+	if job.CurrentPhase != nil {
+		phase = *job.CurrentPhase
+	}
+
+	log.Info("starting implement flow", "phase", phase, "attempt", job.Attempt)
 
 	hb := time.Now()
-	if err := p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("preparing_worktree"), HeartbeatAt: &hb}); err != nil {
-		log.Error("update state", "error", err)
-		return
+	if phase == "" {
+		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("preparing_worktree"), HeartbeatAt: &hb})
 	}
 
-	if err := p.wt.EnsureClone(); err != nil {
-		p.handleFailure(ctx, job, fmt.Errorf("ensure clone: %w", err))
-		return
-	}
-	if err := p.wt.EnsureFetch(); err != nil {
-		p.handleFailure(ctx, job, fmt.Errorf("ensure fetch: %w", err))
-		return
+	// === CHECKPOINT: Worktree ===
+	var wtPath string
+	if phase != "" && job.WorktreePath != nil && p.wt.IsWorktreeDir(*job.WorktreePath) {
+		wtPath = *job.WorktreePath
+		log.Info("resuming with existing worktree", "path", wtPath)
+		if phase == "worktree" || phase == "agent" {
+			p.wt.ResetToBase(wtPath)
+		}
+		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{CurrentPhase: strPtr("worktree"), HeartbeatAt: timePtr(time.Now())})
 	}
 
-	branch := *job.Branch
-
-	wtPath, err := p.wt.AddWorktree(issueNumber, branch)
-	if err != nil {
-		wtPath, err = p.wt.ReuseWorktree(issueNumber, branch)
-		if err != nil {
-			p.handleFailure(ctx, job, fmt.Errorf("worktree setup: %w", err))
+	if wtPath == "" {
+		if err := p.wt.EnsureClone(); err != nil {
+			p.handleFailure(ctx, job, fmt.Errorf("ensure clone: %w", err))
 			return
 		}
-	}
-
-	hb = time.Now()
-	p.db.UpdateJob(ctx, job.ID, db.JobUpdate{
-		WorktreePath: &wtPath,
-		State:        strPtr("running_agent"),
-		HeartbeatAt:  &hb,
-	})
-	log = log.With("worktree", wtPath)
-
-	if job.Attempt == 1 {
-		if err := p.gh.CommentIssue(issueNumber, "🤖 Starting work on this issue..."); err != nil {
-			log.Warn("failed to comment start on issue", "error", err)
+		if err := p.wt.EnsureFetch(); err != nil {
+			p.handleFailure(ctx, job, fmt.Errorf("ensure fetch: %w", err))
+			return
 		}
+
+		branch := *job.Branch
+
+		wtPath, err := p.wt.AddWorktree(issueNumber, branch)
+		if err != nil {
+			wtPath, err = p.wt.ReuseWorktree(issueNumber, branch)
+			if err != nil {
+				p.handleFailure(ctx, job, fmt.Errorf("worktree setup: %w", err))
+				return
+			}
+		}
+
+		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{WorktreePath: &wtPath, CurrentPhase: strPtr("worktree")})
+		log = log.With("worktree", wtPath)
 	}
 
-	issue, err := p.gh.GetIssue(issueNumber)
-	if err != nil {
-		p.handleFailure(ctx, job, fmt.Errorf("get issue: %w", err))
-		return
-	}
-
-	var comments []string
-	for _, c := range issue.Comments {
-		comments = append(comments, fmt.Sprintf("%s: %s", c.Author.Login, c.Body))
-	}
-
-	prompt := p.agentRun.GenerateImplementPrompt(issueNumber, issue.Title, issue.Body, comments, branch)
-	promptFile := filepath.Join(wtPath, ".opencode-prompt.md")
-	os.WriteFile(promptFile, []byte(prompt), 0644)
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go p.heartbeatLoop(ctx, job.ID)
-
-	result, err := p.agentRun.Run(ctx, wtPath, promptFile)
-	if err != nil {
-		p.handleFailure(ctx, job, fmt.Errorf("agent run: %w", err))
-		return
-	}
-
-	if result.NeedsClarification {
+	// === CHECKPOINT: Agent run ===
+	branch := *job.Branch
+	if phase == "" || phase == "worktree" || phase == "agent" {
+		hb = time.Now()
 		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{
-			State:      strPtr("needs_clarification"),
-			LastError:  &result.ClarificationMsg,
-			FinishedAt: timePtr(time.Now()),
+			State:        strPtr("running_agent"),
+			CurrentPhase: strPtr("agent"),
+			HeartbeatAt:  &hb,
 		})
-		log.Warn("needs clarification", "msg", result.ClarificationMsg)
-		return
-	}
 
-	p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("validating")})
+		if job.Attempt == 1 {
+			if err := p.gh.CommentIssue(issueNumber, "🤖 Starting work on this issue..."); err != nil {
+				log.Warn("failed to comment start on issue", "error", err)
+			}
+		}
 
-	hasChanges, err := p.wt.HasChanges(wtPath)
-	if err != nil {
-		p.handleFailure(ctx, job, fmt.Errorf("check changes: %w", err))
-		return
-	}
-	if !hasChanges {
-		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{
-			State:      strPtr("needs_clarification"),
-			LastError:  strPtr("no changes produced by agent"),
-			FinishedAt: timePtr(time.Now()),
-		})
-		return
-	}
+		issue, err := p.gh.GetIssue(issueNumber)
+		if err != nil {
+			p.handleFailure(ctx, job, fmt.Errorf("get issue: %w", err))
+			return
+		}
 
-	changedFiles, err := p.wt.GetChangedFiles(wtPath)
-	if err != nil {
-		p.handleFailure(ctx, job, fmt.Errorf("get changed files: %w", err))
-		return
-	}
+		var comments []string
+		for _, c := range issue.Comments {
+			comments = append(comments, fmt.Sprintf("%s: %s", c.Author.Login, c.Body))
+		}
 
-	for _, f := range changedFiles {
-		if match := p.cfg.IsPathProtected(f); match != nil {
+		prompt := p.agentRun.GenerateImplementPrompt(issueNumber, issue.Title, issue.Body, comments, branch)
+		promptFile := filepath.Join(wtPath, ".opencode-prompt.md")
+		os.WriteFile(promptFile, []byte(prompt), 0644)
+
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		go p.heartbeatLoop(ctx, job.ID)
+
+		result, err := p.agentRun.Run(ctx, wtPath, promptFile)
+
+		logPath := filepath.Join(p.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", job.ID, job.Attempt))
+		os.MkdirAll(p.cfg.LogDir, 0755)
+		var logData string
+		if result != nil {
+			logData = result.RawOutput
+			if result.RawError != "" {
+				logData += "\n--- stderr ---\n" + result.RawError
+			}
+		}
+		if err != nil {
+			logData += fmt.Sprintf("\n--- error ---\n%v\n", err)
+		}
+		if logData != "" {
+			os.WriteFile(logPath, []byte(logData), 0644)
+		}
+
+		if err != nil {
+			p.handleFailure(ctx, job, fmt.Errorf("agent run: %w", err))
+			return
+		}
+
+		if result.NeedsClarification {
 			p.db.UpdateJob(ctx, job.ID, db.JobUpdate{
-				State:      strPtr("blocked"),
-				LastError:  strPtr(fmt.Sprintf("protected path modified: %s (matched pattern: %s)", match.File, match.Pattern)),
+				State:      strPtr("needs_clarification"),
+				LastError:  &result.ClarificationMsg,
 				FinishedAt: timePtr(time.Now()),
 			})
-			log.Warn("blocked - protected file", "file", f, "pattern", match.Pattern)
+			log.Warn("needs clarification", "msg", result.ClarificationMsg)
 			return
 		}
-	}
 
-	p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("committing")})
+		// === CHECKPOINT: Validate ===
+		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("validating"), CurrentPhase: strPtr("validated")})
 
-	if err := p.wt.StageAll(wtPath); err != nil {
-		p.handleFailure(ctx, job, fmt.Errorf("stage: %w", err))
+		hasChanges, err := p.wt.HasChanges(wtPath)
+		if err != nil {
+			p.handleFailure(ctx, job, fmt.Errorf("check changes: %w", err))
+			return
+		}
+		if !hasChanges {
+			p.db.UpdateJob(ctx, job.ID, db.JobUpdate{
+				State:      strPtr("needs_clarification"),
+				LastError:  strPtr("no changes produced by agent"),
+				FinishedAt: timePtr(time.Now()),
+			})
+			return
+		}
+
+		changedFiles, err := p.wt.GetChangedFiles(wtPath)
+		if err != nil {
+			p.handleFailure(ctx, job, fmt.Errorf("get changed files: %w", err))
+			return
+		}
+
+		for _, f := range changedFiles {
+			if match := p.cfg.IsPathProtected(f); match != nil {
+				p.db.UpdateJob(ctx, job.ID, db.JobUpdate{
+					State:      strPtr("blocked"),
+					LastError:  strPtr(fmt.Sprintf("protected path modified: %s (matched pattern: %s)", match.File, match.Pattern)),
+					FinishedAt: timePtr(time.Now()),
+				})
+				log.Warn("blocked - protected file", "file", f, "pattern", match.Pattern)
+				return
+			}
+		}
+
+		// === CHECKPOINT: Stage + Commit ===
+		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("committing"), CurrentPhase: strPtr("committed")})
+
+		committed, _ := p.wt.HasLocalCommits(wtPath)
+		if !committed {
+			if err := p.wt.StageAll(wtPath); err != nil {
+				p.handleFailure(ctx, job, fmt.Errorf("stage: %w", err))
+				return
+			}
+			commitMsg := p.buildCommitMsg(job, result.Summary)
+			if err := p.wt.Commit(wtPath, commitMsg); err != nil {
+				p.handleFailure(ctx, job, fmt.Errorf("commit: %w", err))
+				return
+			}
+		} else {
+			log.Info("commit already exists, skipping")
+		}
+
+		// === CHECKPOINT: Push ===
+		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("pushing"), CurrentPhase: strPtr("pushed")})
+
+		if !p.wt.RemoteBranchExists(branch) {
+			if err := p.wt.Push(wtPath, branch); err != nil {
+				p.handleFailure(ctx, job, fmt.Errorf("push: %w", err))
+				return
+			}
+		} else {
+			log.Info("remote branch already exists, skipping push")
+		}
+
+		// === CHECKPOINT: PR ===
+		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{CurrentPhase: strPtr("pr")})
+
+		prNumber := job.PRNumber
+		prURL := ""
+		if prNumber == nil {
+			p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("creating_pr")})
+			var createdPRNumber int
+			prURL, createdPRNumber, err = p.gh.CreatePR(branch, issueNumber, result.Summary)
+			if err != nil {
+				p.handleFailure(ctx, job, fmt.Errorf("create pr: %w", err))
+				return
+			}
+			prNumber = &createdPRNumber
+			p.gh.CommentIssue(issueNumber, fmt.Sprintf("PR created: %s", prURL))
+		} else {
+			log.Info("PR already exists", "pr", *prNumber)
+			prs, listErr := p.gh.ListPRs()
+			if listErr == nil {
+				for _, pr := range prs {
+					if pr.Number == *prNumber {
+						prURL = pr.URL
+						break
+					}
+				}
+			}
+		}
+
+		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{
+			State:    strPtr("waiting_for_review"),
+			PRNumber: prNumber,
+		})
+		log.Info("implement flow complete", "pr", prNumber, "url", prURL)
 		return
 	}
 
-	commitMsg := p.buildCommitMsg(job, result.Summary)
-	if err := p.wt.Commit(wtPath, commitMsg); err != nil {
-		p.handleFailure(ctx, job, fmt.Errorf("commit: %w", err))
-		return
+	// === RESUME from later phases ===
+	if phase == "validated" || phase == "committed" || phase == "pushed" || phase == "pr" {
+		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("waiting_for_review")})
+		log.Info("job already completed, updated state to waiting_for_review")
 	}
-
-	p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("pushing")})
-
-	if err := p.wt.Push(wtPath, branch); err != nil {
-		p.handleFailure(ctx, job, fmt.Errorf("push: %w", err))
-		return
-	}
-
-	p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("creating_pr")})
-
-	prURL, prNumber, err := p.gh.CreatePR(branch, issueNumber, result.Summary)
-	if err != nil {
-		p.handleFailure(ctx, job, fmt.Errorf("create pr: %w", err))
-		return
-	}
-
-	p.gh.CommentIssue(issueNumber, fmt.Sprintf("PR created: %s", prURL))
-
-	p.db.UpdateJob(ctx, job.ID, db.JobUpdate{
-		State:    strPtr("waiting_for_review"),
-		PRNumber: &prNumber,
-	})
-	log.Info("implement flow complete", "pr", prNumber, "url", prURL)
 }
 
 func (p *Pool) applyFeedback(ctx context.Context, job *db.Job) {
@@ -538,7 +614,7 @@ func (p *Pool) handleFailure(ctx context.Context, job *db.Job, err error) {
 		})
 		log.Error("job failed", "error", errStr)
 
-			switch job.JobType {
+		switch job.JobType {
 		case "implement_issue":
 			if cerr := p.gh.CommentIssue(job.IssueNumber, fmt.Sprintf("🤖 Failed to implement: %s", errStr)); cerr != nil {
 				log.Warn("failed to comment failure on issue", "error", cerr)

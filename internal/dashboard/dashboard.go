@@ -38,14 +38,22 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/jobs/{id}/cancel", s.jobCancel)
 	r.Post("/jobs/{id}/cleanup", s.jobCleanup)
 
-	// SPA
-	spaFS := http.FileServer(http.Dir("frontend/dist"))
-	r.Handle("/ui/assets/*", spaFS)
+	// SPA — serve files from frontend/dist/; any unmatched route serves index.html for client-side routing
+	spaDir := "frontend/dist"
 	r.Get("/ui/*", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "frontend/dist/index.html")
+		path := r.URL.Path
+		if len(path) > 3 {
+			path = path[3:]
+		}
+		fullPath := filepath.Join(spaDir, path)
+		if fi, err := os.Stat(fullPath); err == nil && !fi.IsDir() {
+			http.ServeFile(w, r, fullPath)
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(spaDir, "index.html"))
 	})
 	r.Get("/ui", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "frontend/dist/index.html")
+		http.ServeFile(w, r, filepath.Join(spaDir, "index.html"))
 	})
 
 	// JSON API

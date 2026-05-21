@@ -18,6 +18,12 @@ run: build
 		REVIEW_BOTS="chatgpt-codex-connector[bot]" ./$(BINARY) start; \
 	fi
 
+frontend-build:
+	cd frontend && npm run build
+
+frontend-dev:
+	cd frontend && npm run dev
+
 status: build
 	./$(BINARY) status
 

@@ -125,6 +125,23 @@ func (s *Server) Routes() http.Handler {
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 	})
 
+	// Serve the built SPA with fallback
+	spaFS := http.FileServer(http.Dir("frontend/dist"))
+	r.Handle("/ui/assets/*", spaFS)
+	r.Get("/ui/*", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "frontend/dist/index.html")
+	})
+	r.Get("/ui", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "frontend/dist/index.html")
+	})
+
+	// JSON API
+	r.Get("/api/status", s.apiStatus)
+	r.Get("/api/jobs", s.apiJobs)
+	r.Get("/api/jobs/{id}", s.apiJobDetail)
+	r.Get("/api/jobs/{id}/states", s.apiJobStates)
+	// r.Get("/api/jobs/{id}/logs", s.jobLogs) — already plain text
+
 	return r
 }
 
@@ -321,6 +338,78 @@ func (s *Server) heartbeatDetail(w http.ResponseWriter, r *http.Request) {
 		"selected": job,
 		"log":      logText,
 	})
+}
+
+func jsonResp(w http.ResponseWriter, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(data)
+}
+
+func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
+	jobs, err := s.db.ListJobs(r.Context())
+	if err != nil {
+		jsonResp(w, map[string]interface{}{"error": err.Error()})
+		return
+	}
+	var running, queued, failed, waiting, retry, total int
+	total = len(jobs)
+	for _, j := range jobs {
+		switch j.State {
+		case "queued":
+			queued++
+		case "retry_scheduled":
+			retry++
+		case "failed", "blocked":
+			failed++
+		case "waiting_for_review":
+			waiting++
+		case "running_agent", "preparing_worktree", "validating", "committing", "pushing", "creating_pr", "applying_pr_feedback", "cleanup_running":
+			running++
+		}
+	}
+	jsonResp(w, map[string]int{
+		"total": total, "running": running, "queued": queued,
+		"failed": failed, "waiting": waiting, "retry": retry,
+	})
+}
+
+func (s *Server) apiJobs(w http.ResponseWriter, r *http.Request) {
+	jobs, err := s.db.ListJobs(r.Context())
+	if err != nil {
+		jsonResp(w, map[string]string{"error": err.Error()})
+		return
+	}
+	jsonResp(w, jobs)
+}
+
+func (s *Server) apiJobDetail(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		jsonResp(w, map[string]string{"error": "invalid id"})
+		return
+	}
+	job, err := s.db.GetJob(r.Context(), id)
+	if err != nil || job == nil {
+		jsonResp(w, map[string]string{"error": "not found"})
+		return
+	}
+	jsonResp(w, job)
+}
+
+func (s *Server) apiJobStates(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		jsonResp(w, map[string]string{"error": "invalid id"})
+		return
+	}
+	logs, err := s.db.GetStateLogs(r.Context(), id)
+	if err != nil {
+		jsonResp(w, map[string]string{"error": err.Error()})
+		return
+	}
+	jsonResp(w, logs)
 }
 
 func (s *Server) jobRetry(w http.ResponseWriter, r *http.Request) {

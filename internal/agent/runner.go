@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/paullyFIRE/web3-avatar-agent-runner/internal/config"
@@ -29,7 +31,7 @@ func NewRunner(cfg *config.Config) *Runner {
 	return &Runner{cfg: cfg}
 }
 
-func (r *Runner) Run(ctx context.Context, worktreePath, promptFile string) (*Result, error) {
+func (r *Runner) Run(ctx context.Context, worktreePath, promptFile, logPath string) (*Result, error) {
 	cmd := exec.CommandContext(ctx, r.cfg.OpenCodeBin,
 		"run",
 		"-m", r.cfg.OpenCodeModel,
@@ -43,8 +45,22 @@ func (r *Runner) Run(ctx context.Context, worktreePath, promptFile string) (*Res
 	)
 
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+
+	if logPath != "" {
+		os.MkdirAll(filepath.Dir(logPath), 0755)
+		f, err := os.Create(logPath)
+		if err == nil {
+			defer f.Close()
+			cmd.Stdout = io.MultiWriter(&stdout, f)
+			cmd.Stderr = io.MultiWriter(&stderr, f)
+		} else {
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+		}
+	} else {
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+	}
 
 	err := cmd.Run()
 

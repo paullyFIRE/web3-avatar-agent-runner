@@ -260,23 +260,8 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 		defer cancel()
 		go p.heartbeatLoop(ctx, job.ID)
 
-		result, err := p.agentRun.Run(ctx, wtPath, promptFile)
-
 		logPath := filepath.Join(p.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", job.ID, job.Attempt))
-		os.MkdirAll(p.cfg.LogDir, 0755)
-		var logData string
-		if result != nil {
-			logData = result.RawOutput
-			if result.RawError != "" {
-				logData += "\n--- stderr ---\n" + result.RawError
-			}
-		}
-		if err != nil {
-			logData += fmt.Sprintf("\n--- error ---\n%v\n", err)
-		}
-		if logData != "" {
-			os.WriteFile(logPath, []byte(logData), 0644)
-		}
+		result, err := p.agentRun.Run(ctx, wtPath, promptFile, logPath)
 
 		if err != nil {
 			p.handleFailure(ctx, job, fmt.Errorf("agent run: %w", err))
@@ -503,7 +488,8 @@ func (p *Pool) applyFeedback(ctx context.Context, job *db.Job) {
 	promptFile := filepath.Join(wtPath, ".opencode-prompt.md")
 	os.WriteFile(promptFile, []byte(prompt), 0644)
 
-	result, err := p.agentRun.Run(ctx, wtPath, promptFile)
+	logPath := filepath.Join(p.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", job.ID, job.Attempt))
+	result, err := p.agentRun.Run(ctx, wtPath, promptFile, logPath)
 	if err != nil {
 		p.handleFailure(ctx, job, fmt.Errorf("agent run: %w", err))
 		return

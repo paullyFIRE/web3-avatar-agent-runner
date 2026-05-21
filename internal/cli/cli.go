@@ -258,7 +258,7 @@ func showStatus() error {
 	fmt.Fprintf(w, "  Workspace:\t%s\n", cfg.WorkspaceRoot)
 	fmt.Fprintf(w, "  Poll Interval:\t%d seconds\n", cfg.PollIntervalSeconds)
 	fmt.Fprintf(w, "  Max Agents:\t%d\n", cfg.MaxConcurrentAgents)
-	fmt.Fprintf(w, "  Dashboard:\thttp://%s\n", cfg.DashboardAddr)
+	fmt.Fprintf(w, "  Dashboard:\t%s\n", dashboardURL(cfg))
 	fmt.Fprintf(w, "\n")
 	fmt.Fprintf(w, "Jobs:\n")
 	fmt.Fprintf(w, "  Running:\t%d\n", running)
@@ -469,6 +469,13 @@ func parseInt64(s string) int64 {
 	var id int64
 	fmt.Sscanf(s, "%d", &id)
 	return id
+}
+
+func dashboardURL(cfg *config.Config) string {
+	if u := os.Getenv("PORTLESS_URL"); u != "" {
+		return u
+	}
+	return fmt.Sprintf("http://%s", cfg.DashboardAddr)
 }
 
 

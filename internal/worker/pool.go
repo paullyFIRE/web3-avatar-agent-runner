@@ -14,22 +14,56 @@ import (
 	"github.com/paullyFIRE/web3-avatar-agent-runner/internal/config"
 	"github.com/paullyFIRE/web3-avatar-agent-runner/internal/db"
 	"github.com/paullyFIRE/web3-avatar-agent-runner/internal/github"
-	"github.com/paullyFIRE/web3-avatar-agent-runner/internal/worktree"
 )
+
+type GitHubClient interface {
+	ListPRs() ([]github.PR, error)
+	GetIssue(number int) (*github.Issue, error)
+	CommentIssue(issueNumber int, body string) error
+	CommentPR(prNumber int, body string) error
+	GetPRComments(prNumber int) ([]github.PRComment, error)
+	CreatePR(branch string, issueNumber int, summary string) (string, int, error)
+}
+
+type WorktreeManager interface {
+	BranchName(issueNumber int, title string) string
+	IsWorktreeDir(path string) bool
+	ResetToBase(worktreePath string) error
+	HasChanges(worktreePath string) (bool, error)
+	GetChangedFiles(worktreePath string) ([]string, error)
+	StageAll(worktreePath string) error
+	Commit(worktreePath, message string) error
+	HasLocalCommits(worktreePath string) (bool, error)
+	RemoteBranchExists(branch string) bool
+	Push(worktreePath, branch string) error
+	ForcePush(worktreePath, branch string) error
+	EnsureClone() error
+	EnsureFetch() error
+	AddWorktree(issueNumber int, branch string) (string, error)
+	ReuseWorktree(issueNumber int, branch string) (string, error)
+	ReuseWorktreeFromRemote(issueNumber int, branch string) (string, error)
+	RemoveWorktree(issueNumber int, branch string) error
+}
+
+type AgentRunner interface {
+	Run(ctx context.Context, worktreePath, promptFile, logPath string) (*agent.Result, error)
+	GenerateImplementPrompt(issueNumber int, title, body string, comments []string, branch string) string
+	GenerateFeedbackPrompt(prNumber, issueNumber int, comment string, title, body string) string
+}
 
 type Pool struct {
 	cfg      *config.Config
 	db       *db.DB
-	gh       *github.Client
-	wt       *worktree.Manager
-	agentRun *agent.Runner
+	gh       GitHubClient
+	wt       WorktreeManager
+	agentRun AgentRunner
 
 	sem    chan struct{}
 	wg     sync.WaitGroup
 	logger *slog.Logger
 }
 
-func NewPool(cfg *config.Config, database *db.DB, ghClient *github.Client, wtMgr *worktree.Manager, agt *agent.Runner) *Pool {
+func NewPool(cfg *config.Config, database *db.DB, ghClient GitHubClient, wtMgr WorktreeManager, agt AgentRunner) *Pool {
 	return &Pool{
 		cfg:      cfg,
 		db:       database,
@@ -51,7 +85,7 @@ func (p *Pool) Wait() {
 }
 
 func (p *Pool) EnqueueImplementJob(issueNumber int, title string) error {
-	branch := worktree.BranchName(issueNumber, title)
+	branch := p.wt.BranchName(issueNumber, title)
 	maxAttempts := p.cfg.RetryLimit + 1
 
 	activeIssue, err := p.db.GetActiveJobsByIssue(context.Background(), issueNumber, "implement_issue")
@@ -68,6 +102,20 @@ func (p *Pool) EnqueueImplementJob(issueNumber int, title string) error {
 	}
 	if activeBranch != nil {
 		return nil
+	}
+
+	prs, err := p.gh.ListPRs()
+	if err != nil {
+		slog.Warn("enqueue: failed to check existing PRs, creating job anyway",
+			"issue", issueNumber, "error", err)
+	} else {
+		for _, pr := range prs {
+			if pr.HeadRefName == branch {
+				slog.Info("enqueue: PR already exists for branch, skipping",
+					"issue", issueNumber, "branch", branch, "pr", pr.Number)
+				return nil
+			}
+		}
 	}
 
 	_, err = p.db.CreateJob(context.Background(), db.CreateJobParams{

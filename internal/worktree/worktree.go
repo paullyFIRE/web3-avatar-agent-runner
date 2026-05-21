@@ -181,6 +181,10 @@ func (m *Manager) Prune() error {
 	return err
 }
 
+func (m *Manager) BranchName(issueNumber int, title string) string {
+	return BranchName(issueNumber, title)
+}
+
 func (m *Manager) HasChanges(worktreePath string) (bool, error) {
 	out, err := m.gitIn(worktreePath, "status", "--porcelain")
 	if err != nil {

@@ -128,6 +128,8 @@ func (m *mockAgent) GenerateFeedbackPrompt(prNumber, issueNumber int, comment st
 	return "feedback for " + title
 }
 
+func (m *mockAgent) SetOnPid(fn func(pid int)) {}
+
 func setupTestDB(t *testing.T) *db.DB {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "agent-runner-test-*")

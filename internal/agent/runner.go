@@ -25,11 +25,16 @@ type Result struct {
 }
 
 type Runner struct {
-	cfg *config.Config
+	cfg  *config.Config
+	OnPid func(pid int) // called immediately after the agent process starts
 }
 
 func NewRunner(cfg *config.Config) *Runner {
 	return &Runner{cfg: cfg}
+}
+
+func (r *Runner) SetOnPid(fn func(pid int)) {
+	r.OnPid = fn
 }
 
 func (r *Runner) Run(ctx context.Context, worktreePath, promptFile, logPath string) (*Result, error) {
@@ -63,14 +68,16 @@ func (r *Runner) Run(ctx context.Context, worktreePath, promptFile, logPath stri
 		cmd.Stderr = &stderr
 	}
 
-	err := cmd.Start()
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start agent: %w", err)
 	}
 
 	result := &Result{PID: cmd.Process.Pid}
+	if r.OnPid != nil {
+		r.OnPid(cmd.Process.Pid)
+	}
 
-	err = cmd.Wait()
+	err := cmd.Wait()
 
 	output := stdout.String()
 	errOutput := stderr.String()

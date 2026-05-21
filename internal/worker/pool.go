@@ -50,6 +50,7 @@ type AgentRunner interface {
 	Run(ctx context.Context, worktreePath, promptFile, logPath string) (*agent.Result, error)
 	GenerateImplementPrompt(issueNumber int, title, body string, comments []string, branch string) string
 	GenerateFeedbackPrompt(prNumber, issueNumber int, comment string, title, body string) string
+	SetOnPid(fn func(pid int))
 }
 
 type Pool struct {
@@ -339,12 +340,10 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 		go p.heartbeatLoop(ctx, job.ID)
 
 		logPath := filepath.Join(p.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", job.ID, job.Attempt))
-		result, err := p.agentRun.Run(ctx, wtPath, promptFile, logPath)
-
-		if result != nil && result.PID > 0 {
-			pid := result.PID
+		p.agentRun.SetOnPid(func(pid int) {
 			p.db.UpdateJob(context.Background(), job.ID, db.JobUpdate{PID: &pid})
-		}
+		})
+		result, err := p.agentRun.Run(ctx, wtPath, promptFile, logPath)
 
 		if err != nil {
 			p.handleFailure(ctx, job, fmt.Errorf("agent run: %w", err))
@@ -581,13 +580,10 @@ func (p *Pool) applyFeedback(ctx context.Context, job *db.Job) {
 	os.WriteFile(promptFile, []byte(prompt), 0644)
 
 	logPath := filepath.Join(p.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", job.ID, job.Attempt))
-	result, err := p.agentRun.Run(ctx, wtPath, promptFile, logPath)
-
-	if result != nil && result.PID > 0 {
-		pid := result.PID
+	p.agentRun.SetOnPid(func(pid int) {
 		p.db.UpdateJob(context.Background(), job.ID, db.JobUpdate{PID: &pid})
-	}
-
+	})
+	result, err := p.agentRun.Run(ctx, wtPath, promptFile, logPath)
 	if err != nil {
 		p.handleFailure(ctx, job, fmt.Errorf("agent run: %w", err))
 		return

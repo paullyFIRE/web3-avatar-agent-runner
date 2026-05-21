@@ -115,6 +115,8 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/jobs", s.jobsList)
 	r.Get("/jobs/{id}", s.jobDetail)
 	r.Get("/jobs/{id}/logs", s.jobLogs)
+	r.Get("/heartbeats", s.heartbeats)
+	r.Get("/heartbeats/{id}", s.heartbeatDetail)
 	r.Get("/agents", s.agentsList)
 	r.Post("/jobs/{id}/retry", s.jobRetry)
 	r.Post("/jobs/{id}/cancel", s.jobCancel)
@@ -272,13 +274,53 @@ func (s *Server) jobLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) agentsList(w http.ResponseWriter, r *http.Request) {
-	// For now, render a list of running jobs as "agents"
 	jobs, err := s.db.GetJobsByState(r.Context(), "running_agent", "applying_pr_feedback")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	s.renderTemplate(w, "agents", jobs)
+}
+
+func (s *Server) heartbeats(w http.ResponseWriter, r *http.Request) {
+	jobs, err := s.db.ListJobs(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.renderTemplate(w, "heartbeats", map[string]interface{}{
+		"allJobs":  jobs,
+		"selected": nil,
+		"log":      "",
+	})
+}
+
+func (s *Server) heartbeatDetail(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid job id", http.StatusBadRequest)
+		return
+	}
+
+	allJobs, _ := s.db.ListJobs(r.Context())
+	job, _ := s.db.GetJob(r.Context(), id)
+
+	logText := ""
+	if job != nil {
+		logPath := filepath.Join(s.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", id, job.Attempt))
+		data, _ := os.ReadFile(logPath)
+		logText = string(data)
+		if logText == "" {
+			logText = "No logs available yet."
+		}
+	}
+
+	s.renderTemplate(w, "heartbeats", map[string]interface{}{
+		"allJobs":  allJobs,
+		"selected": job,
+		"log":      logText,
+	})
 }
 
 func (s *Server) jobRetry(w http.ResponseWriter, r *http.Request) {

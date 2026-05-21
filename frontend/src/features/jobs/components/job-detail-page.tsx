@@ -27,7 +27,7 @@ export function JobDetailPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(`/jobs/${jobId}/logs`);
+        const res = await fetch(`/api/jobs/${jobId}/logs`);
         const text = await res.text();
         if (text) setLog(text);
       } catch { /* ignore */ }

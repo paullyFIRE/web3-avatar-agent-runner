@@ -61,6 +61,7 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/api/jobs", s.apiJobs)
 	r.Get("/api/jobs/{id}", s.apiJobDetail)
 	r.Get("/api/jobs/{id}/states", s.apiJobStates)
+	r.Get("/api/jobs/{id}/logs", s.jobLogs)
 
 	// Root redirects to the new UI
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {

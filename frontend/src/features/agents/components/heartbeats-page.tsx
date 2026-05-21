@@ -24,7 +24,7 @@ export function HeartbeatsPage() {
   const handleSelect = async (id: number) => {
     setSelectedId(id);
     try {
-      const res = await fetch(`/jobs/${id}/logs`);
+      const res = await fetch(`/api/jobs/${id}/logs`);
       setLog(await res.text());
     } catch {
       setLog('No logs available.');

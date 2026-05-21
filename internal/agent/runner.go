@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/paullyFIRE/web3-avatar-agent-runner/internal/config"
 )
@@ -38,7 +39,11 @@ func (r *Runner) SetOnPid(fn func(pid int)) {
 }
 
 func (r *Runner) Run(ctx context.Context, worktreePath, promptFile, logPath string) (*Result, error) {
-	cmd := exec.CommandContext(ctx, r.cfg.OpenCodeBin,
+	timeout := 15 * time.Minute
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(runCtx, r.cfg.OpenCodeBin,
 		"run",
 		"-m", r.cfg.OpenCodeModel,
 		"-f", promptFile,

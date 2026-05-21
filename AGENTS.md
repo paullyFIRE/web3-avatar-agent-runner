@@ -99,6 +99,7 @@ Defaults in `SPEC.md:76-92`.
 - **Never kill your own opencode session**: When killing opencode processes, always exclude your own PID (`$$`). Kill only PIDs from `jobs.pid` in the DB — those are tracked agents, never your session. Never use `pkill -f opencode` or `killall opencode` as that kills your own process too. Use `sqlite3 ... "SELECT pid FROM jobs WHERE pid IS NOT NULL;" | while read pid; do ... done` instead.
 - **Exclude `.opencode-prompt.md` from git**: The prompt file written before the agent runs shows up in `git status --porcelain` as an untracked change. If the agent produces no real changes, this single file gets committed and pushed as an empty PR. Append it to the worktree's `.gitignore` before running the agent.
 - **Validate agent output before PR**: Check that `result.Summary` is non-empty after the agent runs. If the agent exited early without producing output, fail the job instead of creating an empty PR.
+- **Agent timeout**: Agents get a 15-minute timeout via `context.WithTimeout`. If the agent hangs (stuck in explore mode, API timeout, etc.), the context kills the process and the job is retried.
 
 ```bash
 agent-runner doctor

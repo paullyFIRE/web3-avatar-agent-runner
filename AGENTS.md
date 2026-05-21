@@ -5,7 +5,7 @@ Local daemon that polls GitHub issues, runs OpenCode Go agents to implement fixe
 ## Architecture
 
 - **Language**: Go. Single binary (`agent-runner`).
-- **Dashboard (legacy)**: Go server-rendered HTML + Tailwind + HTMX (at /dashboard, /jobs, /heartbeats, /agents).
+- **Dashboard (legacy)**: Go server-rendered HTML + Tailwind + HTMX (at /dashboard, /jobs, /heartbeats, /agents) — removed.
 - **Dashboard (new)**: Vite + React + TypeScript + Tailwind + TanStack Query SPA at `/ui/`. JSON API at `/api/`.
 - **Frontend stack**: React 19, TypeScript, Tailwind CSS 3, shadcn/ui primitives, TanStack Query, Lucide React icons, react-router-dom v7. Feature-based architecture under `frontend/src/features/`. Built with `make frontend-build` or `cd frontend && npm run build`. Dev mode with `make frontend-dev` for Vite HMR proxy on port 5173.
 - **GitHub**: Local `gh` CLI only — no API tokens, no webhooks, no GitHub Actions.

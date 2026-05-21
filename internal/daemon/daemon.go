@@ -8,9 +8,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -92,6 +94,7 @@ func (d *Daemon) Start() error {
 		"poll_interval", d.cfg.PollIntervalSeconds,
 	)
 
+	killOrphanAgents()
 	d.pool.RecoverHangingJobs(d.ctx)
 
 	d.pool.Start(d.ctx)
@@ -156,5 +159,22 @@ func (d *Daemon) shutdown(srv *http.Server) {
 	}
 
 	d.db.Close()
+
+	killOrphanAgents()
 	slog.Info("daemon stopped")
+}
+
+func killOrphanAgents() {
+	out, err := exec.Command("pgrep", "-f", "opencode.*run").Output()
+	if err != nil {
+		return
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, pidStr := range lines {
+		pid, err := strconv.Atoi(strings.TrimSpace(pidStr))
+		if err != nil {
+			continue
+		}
+		syscall.Kill(pid, syscall.SIGTERM)
+	}
 }

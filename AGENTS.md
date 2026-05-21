@@ -95,6 +95,8 @@ Defaults in `SPEC.md:76-92`.
 
 ## Verification
 
+- **Zombie process lifecycle**: On daemon startup, `killOrphanAgents()` kills any `opencode run` processes left from previous instances. On shutdown, the same function runs to clean up tracked agents. `RecoverHangingJobs` and `recoverStaleJobs` always recover stale-heartbeat jobs (ignoring PID liveness) and send SIGTERM to orphan agents.
+
 ```bash
 agent-runner doctor
 ```

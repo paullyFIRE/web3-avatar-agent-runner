@@ -20,13 +20,13 @@ run: build frontend-build
 
 run-dev: build
 	@pkill -f 'agent-runner start' 2>/dev/null; sleep 1
-	REVIEW_BOTS="chatgpt-codex-connector[bot]" ./$(BINARY) start &
+	REVIEW_BOTS="chatgpt-codex-connector[bot]" env -u PORT -u HOST -u PORTLESS_URL ./$(BINARY) start &
 	sleep 2
 	cd frontend && npm run dev
 	@pkill -f 'agent-runner start' 2>/dev/null
 
 frontend-build:
-	cd frontend && npm run build
+	cd frontend && NODE_ENV=production npm run build
 
 frontend-dev:
 	cd frontend && npm run dev

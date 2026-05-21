@@ -74,6 +74,8 @@ internal/
 - **Commit message body line length**: Pre-commit hooks (commitlint) enforce `body-max-line-length` (400 chars). Agent summaries with long markdown lines get rejected. Truncate the summary AND each line to fit within limits.
 - **Force push on PR update**: When pushing new commits to an existing PR branch, use `git push --force-with-lease` because the remote branch has different old commits. Plain `git push` fails.
 - **`NeedsClarification` false positive**: The agent output sometimes uses "clarification" as part of its summary text (e.g., "build env clarification"). Check for exact phrases like "clarification needed" or "needs clarification" rather than any mention of the word. Also negate — "no clarification needed" should not trigger.
+- **Clear LastError on state re-entry**: Stale errors from previous attempts persist in `last_error` and show on the dashboard even when the job is running again. Always clear `LastError` (set to empty string) when transitioning back to a running state.
+- **Skip no-op state logs**: `UpdateJob` should not log a state transition if `fromState == toState` — prevents noise like "preparing_worktree → preparing_worktree" in the timeline.
 - **Stream agent logs in real-time**: Pass a `logPath` to `agent.Run()` which uses `io.MultiWriter` to tee stdout/stderr to both the in-memory buffer (for parsing) and a file (for live dashboard viewing). No more waiting until the agent finishes to see output.
 
 ## Config

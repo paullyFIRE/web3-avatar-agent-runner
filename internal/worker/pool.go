@@ -178,12 +178,17 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 
 	log.Info("starting implement flow", "phase", phase, "attempt", job.Attempt)
 
-	fromState := job.State
+	// Clear stale error when re-entering a running state
+	emptyErr := ""
+	p.db.UpdateJob(ctx, job.ID, db.JobUpdate{HeartbeatAt: timePtr(time.Now()), LastError: &emptyErr})
 
 	hb := time.Now()
 	if phase == "" {
-		p.db.LogState(ctx, job.ID, fromState, "preparing_worktree", "")
-		p.db.UpdateJob(ctx, job.ID, db.JobUpdate{State: strPtr("preparing_worktree"), HeartbeatAt: &hb})
+		p.db.LogState(ctx, job.ID, job.State, "preparing_worktree", "fresh start")
+	}
+
+	if phase == "" {
+		p.db.LogState(ctx, job.ID, job.State, "preparing_worktree", "fresh start")
 	}
 
 	// === CHECKPOINT: Worktree ===

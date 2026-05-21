@@ -334,7 +334,9 @@ func (d *DB) UpdateJob(ctx context.Context, id int64, u JobUpdate) error {
 	if u.State != nil {
 		var currentState string
 		d.conn.QueryRowContext(ctx, `SELECT state FROM jobs WHERE id = ?`, id).Scan(&currentState)
-		d.LogState(ctx, id, currentState, *u.State, "")
+		if currentState != *u.State {
+			d.LogState(ctx, id, currentState, *u.State, "")
+		}
 	}
 	if u.LastError != nil && *u.LastError != "" {
 		var currentState string

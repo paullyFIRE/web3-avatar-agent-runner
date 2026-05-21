@@ -257,10 +257,6 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 		p.db.LogState(ctx, job.ID, job.State, "preparing_worktree", "fresh start")
 	}
 
-	if phase == "" {
-		p.db.LogState(ctx, job.ID, job.State, "preparing_worktree", "fresh start")
-	}
-
 	// === CHECKPOINT: Worktree ===
 	var wtPath string
 	if phase != "" && job.WorktreePath != nil && p.wt.IsWorktreeDir(*job.WorktreePath) {
@@ -331,6 +327,11 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 		promptFile := filepath.Join(wtPath, ".opencode-prompt.md")
 		os.WriteFile(promptFile, []byte(prompt), 0644)
 
+		if gi, err := os.OpenFile(filepath.Join(wtPath, ".gitignore"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			gi.WriteString("\n.opencode-prompt.md\n")
+			gi.Close()
+		}
+
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		go p.heartbeatLoop(ctx, job.ID)
@@ -343,6 +344,11 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 
 		if err != nil {
 			p.handleFailure(ctx, job, fmt.Errorf("agent run: %w", err))
+			return
+		}
+
+		if strings.TrimSpace(result.Summary) == "" && strings.TrimSpace(result.RawOutput) == "" {
+			p.handleFailure(ctx, job, fmt.Errorf("agent produced no output"))
 			return
 		}
 
@@ -474,7 +480,7 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 				return
 			}
 			prTitle := fmt.Sprintf("fix: resolve #%d — %s", issueNumber, issue.Title)
-			prBody := fmt.Sprintf("## Summary\nResume previous implementation for issue #%d: %s\n\nCloses #%d", issueNumber, issue.Title, issueNumber)
+			prBody := fmt.Sprintf("## Summary\nResume previous implementation for issue #%d: %s", issueNumber, issue.Title)
 			newPR, url, err := p.findOrCreatePR(branch, issueNumber, prTitle, prBody)
 			if err != nil {
 				p.handleFailure(ctx, job, fmt.Errorf("resume create pr: %w", err))
@@ -791,7 +797,7 @@ func (p *Pool) buildPRBody(issueNumber int, issueTitle string, result *agent.Res
 		valSection = fmt.Sprintf("\n\n## Validation\n%s", validation)
 	}
 
-	return fmt.Sprintf("## Summary\n%s%s%s\n\nCloses #%d", summary, files, valSection, issueNumber)
+	return fmt.Sprintf("## Summary\n%s%s%s", summary, files, valSection)
 }
 
 func (p *Pool) findOrCreatePR(branch string, issueNumber int, title, body string) (*int, string, error) {

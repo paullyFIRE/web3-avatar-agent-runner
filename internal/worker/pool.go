@@ -316,6 +316,11 @@ func (p *Pool) implementIssue(ctx context.Context, job *db.Job) {
 		logPath := filepath.Join(p.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", job.ID, job.Attempt))
 		result, err := p.agentRun.Run(ctx, wtPath, promptFile, logPath)
 
+		if result != nil && result.PID > 0 {
+			pid := result.PID
+			p.db.UpdateJob(context.Background(), job.ID, db.JobUpdate{PID: &pid})
+		}
+
 		if err != nil {
 			p.handleFailure(ctx, job, fmt.Errorf("agent run: %w", err))
 			return
@@ -552,6 +557,12 @@ func (p *Pool) applyFeedback(ctx context.Context, job *db.Job) {
 
 	logPath := filepath.Join(p.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", job.ID, job.Attempt))
 	result, err := p.agentRun.Run(ctx, wtPath, promptFile, logPath)
+
+	if result != nil && result.PID > 0 {
+		pid := result.PID
+		p.db.UpdateJob(context.Background(), job.ID, db.JobUpdate{PID: &pid})
+	}
+
 	if err != nil {
 		p.handleFailure(ctx, job, fmt.Errorf("agent run: %w", err))
 		return

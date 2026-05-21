@@ -21,6 +21,7 @@ type Result struct {
 	ClarificationMsg   string
 	RawOutput          string
 	RawError           string
+	PID                int
 }
 
 type Runner struct {
@@ -62,15 +63,20 @@ func (r *Runner) Run(ctx context.Context, worktreePath, promptFile, logPath stri
 		cmd.Stderr = &stderr
 	}
 
-	err := cmd.Run()
+	err := cmd.Start()
+	if err != nil {
+		return nil, fmt.Errorf("start agent: %w", err)
+	}
+
+	result := &Result{PID: cmd.Process.Pid}
+
+	err = cmd.Wait()
 
 	output := stdout.String()
 	errOutput := stderr.String()
 
-	result := &Result{
-		RawOutput: output,
-		RawError:  errOutput,
-	}
+	result.RawOutput = output
+	result.RawError = errOutput
 
 	if err != nil {
 		if ctx.Err() != nil {

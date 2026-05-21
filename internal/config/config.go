@@ -16,6 +16,7 @@ type Config struct {
 	RepoURL                 string   `yaml:"repo_url"`
 	ReadyLabel              string   `yaml:"ready_label"`
 	AuthorizedCommenter     string   `yaml:"authorized_commenter"`
+	ReviewBots              []string `yaml:"review_bots"`
 	DisallowedReviewer      string   `yaml:"disallowed_reviewer"`
 	BaseBranch              string   `yaml:"base_branch"`
 	PollIntervalSeconds     int      `yaml:"poll_interval_seconds"`
@@ -164,6 +165,21 @@ func (c *Config) applyEnvOverrides() {
 	if v := os.Getenv("DASHBOARD_ADDR"); v != "" {
 		c.DashboardAddr = v
 	}
+	if v := os.Getenv("REVIEW_BOTS"); v != "" {
+		c.ReviewBots = strings.Split(v, ",")
+	}
+}
+
+func (c *Config) IsAuthorizedCommenter(login string) bool {
+	if login == c.AuthorizedCommenter {
+		return true
+	}
+	for _, bot := range c.ReviewBots {
+		if login == bot {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Config) ExpandPaths() error {

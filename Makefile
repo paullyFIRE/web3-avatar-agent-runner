@@ -13,9 +13,9 @@ doctor: build
 run: build
 	@pkill -f 'agent-runner start' 2>/dev/null; sleep 1
 	@if command -v portless >/dev/null 2>&1; then \
-		portless agent-runner ./$(BINARY) start; \
+		REVIEW_BOTS="chatgpt-codex-connector[bot]" portless agent-runner ./$(BINARY) start; \
 	else \
-		./$(BINARY) start; \
+		REVIEW_BOTS="chatgpt-codex-connector[bot]" ./$(BINARY) start; \
 	fi
 
 status: build

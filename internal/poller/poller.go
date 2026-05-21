@@ -199,7 +199,7 @@ func (p *Poller) pollComments(ctx context.Context) error {
 		}
 
 		for _, c := range comments {
-			if c.Author.Login != p.cfg.AuthorizedCommenter {
+			if !p.cfg.IsAuthorizedCommenter(c.Author.Login) {
 				continue
 			}
 

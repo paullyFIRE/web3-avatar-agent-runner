@@ -407,7 +407,8 @@ func (d *DB) GetActiveJobCount(ctx context.Context) (int, error) {
 func (d *DB) GetActiveJobsByIssue(ctx context.Context, issueNumber int, jobType string) ([]*Job, error) {
 	activeStates := []string{
 		"queued", "preparing_worktree", "running_agent", "validating", "committing",
-		"pushing", "creating_pr", "applying_pr_feedback", "retry_scheduled", "cleanup_running",
+		"pushing", "creating_pr", "applying_pr_feedback", "retry_scheduled",
+		"needs_clarification", "waiting_for_review", "cleanup_running",
 	}
 	rows, err := d.conn.QueryContext(ctx, `
 		SELECT id, repo_owner, repo_name, issue_number, pr_number, branch, worktree_path, job_type, state, current_phase,

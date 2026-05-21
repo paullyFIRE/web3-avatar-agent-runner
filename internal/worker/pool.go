@@ -54,23 +54,20 @@ func (p *Pool) EnqueueImplementJob(issueNumber int, title string) error {
 	branch := worktree.BranchName(issueNumber, title)
 	maxAttempts := p.cfg.RetryLimit + 1
 
-	existing, err := p.db.GetActiveJobForBranch(context.Background(), branch)
+	activeIssue, err := p.db.GetActiveJobsByIssue(context.Background(), issueNumber, "implement_issue")
 	if err != nil {
 		return err
 	}
-	if existing != nil {
+	if len(activeIssue) > 0 {
 		return nil
 	}
 
-	prs, err := p.gh.ListPRs()
+	activeBranch, err := p.db.GetActiveJobForBranch(context.Background(), branch)
 	if err != nil {
-		slog.Warn("enqueue: failed to check existing PRs, creating job anyway", "issue", issueNumber, "error", err)
-	} else {
-		for _, pr := range prs {
-			if pr.HeadRefName == branch {
-				return nil
-			}
-		}
+		return err
+	}
+	if activeBranch != nil {
+		return nil
 	}
 
 	_, err = p.db.CreateJob(context.Background(), db.CreateJobParams{

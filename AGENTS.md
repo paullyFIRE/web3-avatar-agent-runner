@@ -73,7 +73,8 @@ internal/
 - **`wtPath` shadowing bug**: Using `:=` inside an inner `if` block shadows the outer variable. Always use `=` when assigning to a variable from an outer scope.
 - **Commit message body line length**: Pre-commit hooks (commitlint) enforce `body-max-line-length` (400 chars). Agent summaries with long markdown lines get rejected. Truncate the summary AND each line to fit within limits.
 - **Force push on PR update**: When pushing new commits to an existing PR branch, use `git push --force-with-lease` because the remote branch has different old commits. Plain `git push` fails.
-- **`NeedsClarification` false positive**: The agent output sometimes uses "clarification" as part of its summary text (e.g., "build env clarification"). Check for exact phrases like "clarification needed" or "needs clarification" rather than any mention of the word.
+- **`NeedsClarification` false positive**: The agent output sometimes uses "clarification" as part of its summary text (e.g., "build env clarification"). Check for exact phrases like "clarification needed" or "needs clarification" rather than any mention of the word. Also negate — "no clarification needed" should not trigger.
+- **One job per issue**: Always check `GetActiveJobsByIssue` before creating a new implement job. Having a PR open does not mean work is done — the PR might need updates from feedback. Let the agent flow handle existing PRs (force push updates).
 
 ## Config
 

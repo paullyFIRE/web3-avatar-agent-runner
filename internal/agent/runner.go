@@ -66,7 +66,8 @@ func (r *Runner) Run(ctx context.Context, worktreePath, promptFile string) (*Res
 	result.Summary = parseSummary(output)
 	result.FilesChanged = parseFilesChanged(output)
 	result.ValidationNotes = parseValidationNotes(output)
-	result.NeedsClarification = strings.Contains(output, "clarification") ||
+	result.NeedsClarification = strings.Contains(strings.ToLower(output), "clarification needed") ||
+		strings.Contains(strings.ToLower(output), "needs clarification") ||
 		strings.Contains(strings.ToLower(output), "ambiguous")
 	if result.NeedsClarification {
 		result.ClarificationMsg = extractClarification(output)

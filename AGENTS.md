@@ -69,8 +69,11 @@ internal/
 - **Post-agent task idempotency**: never assume a phase failed just because the daemon died. Before committing, check `git rev-list HEAD ^origin/master`. Before pushing, check `git ls-remote --heads`. Before creating a PR, check if `job.PRNumber` is already set.
 - **`IsWorktreeDir` needs deep validation**: `git rev-parse --git-dir` just reads the `.git` file but doesn't verify the resolved path exists. Stat the resolved git dir path too.
 - **State audit via state_logs table**: every `UpdateJob` that changes `State` or sets `LastError` automatically logs to `state_logs`. The dashboard job detail page shows a timeline sidebar with timestamps so you can tell if an error is stale or fresh.
-
-## Config
+- **SQLite `datetime('now')` is UTC, Go local time**: `datetime('now')` in SQLite returns UTC, but Go's `time.Format` and `time.Parse` use local timezone. This causes staleness checks to fail by the timezone offset. Always use `datetime('now', 'localtime')` in SQL when comparing against Go-formatted timestamps.
+- **`wtPath` shadowing bug**: Using `:=` inside an inner `if` block shadows the outer variable. Always use `=` when assigning to a variable from an outer scope.
+- **Commit message body line length**: Pre-commit hooks (commitlint) enforce `body-max-line-length` (400 chars). Agent summaries with long markdown lines get rejected. Truncate the summary AND each line to fit within limits.
+- **Force push on PR update**: When pushing new commits to an existing PR branch, use `git push --force-with-lease` because the remote branch has different old commits. Plain `git push` fails.
+- **`NeedsClarification` false positive**: The agent output sometimes uses "clarification" as part of its summary text (e.g., "build env clarification"). Check for exact phrases like "clarification needed" or "needs clarification" rather than any mention of the word.
 
 ## Config
 

@@ -270,6 +270,11 @@ func (m *Manager) Push(worktreePath string, branch string) error {
 	return err
 }
 
+func (m *Manager) ForcePush(worktreePath string, branch string) error {
+	_, err := m.gitIn(worktreePath, "push", "--force-with-lease", "origin", branch)
+	return err
+}
+
 func (m *Manager) checkBranchExists(repoDir, branch string) error {
 	_, err := m.gitIn(repoDir, "rev-parse", "--verify", "refs/heads/"+branch)
 	return err

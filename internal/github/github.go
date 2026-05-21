@@ -190,24 +190,8 @@ func (c *Client) GetPRTimelineComments(prNumber int) ([]PRComment, error) {
 	return comments, nil
 }
 
-func (c *Client) CreatePR(branch string, issueNumber int, summary string) (string, int, error) {
-	title := fmt.Sprintf("fix: resolve issue #%d", issueNumber)
-	body := fmt.Sprintf(`## Summary
-%s
-
-## Validation
-- Pre-commit hook: passed
-- Pre-push hook: passed
-
-## Risk
-Low - local agent implementation
-
-## Agent
-- Runner: local OpenCode Go
-- Machine: local MacBook Pro Apple M5, 32 GB RAM
-
-Closes #%d
-`, summary, issueNumber)
+func (c *Client) CreatePR(branch string, issueNumber int, title, body string) (string, int, error) {
+	bodyWithCloses := fmt.Sprintf("%s\n\nCloses #%d", body, issueNumber)
 
 	cmd := exec.Command("gh", "pr", "create",
 		"--repo", c.repo,
@@ -216,7 +200,7 @@ Closes #%d
 		"--head", branch,
 		"--base", c.cfg.BaseBranch,
 	)
-	cmd.Stdin = strings.NewReader(body)
+	cmd.Stdin = strings.NewReader(bodyWithCloses)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

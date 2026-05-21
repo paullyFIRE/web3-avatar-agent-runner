@@ -37,7 +37,7 @@ func (m *mockGH) GetPRComments(prNumber int) ([]github.PRComment, error) {
 	return nil, nil
 }
 
-func (m *mockGH) CreatePR(branch string, issueNumber int, summary string) (string, int, error) {
+func (m *mockGH) CreatePR(branch string, issueNumber int, title, body string) (string, int, error) {
 	return "https://github.com/test/repo/pull/1", 1, nil
 }
 

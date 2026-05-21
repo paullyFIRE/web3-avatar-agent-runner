@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -157,10 +159,20 @@ func (s *Server) jobLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentLog := filepath.Join(s.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", id, job.Attempt))
-
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
+
+	// Show process tree if PID is known
+	if job.PID != nil && *job.PID > 0 {
+		tree := getProcessTree(*job.PID)
+		if tree != "" {
+			io.WriteString(w, "━━━ Process Tree ━━━\n")
+			io.WriteString(w, tree)
+			io.WriteString(w, "\n\n")
+		}
+	}
+
+	currentLog := filepath.Join(s.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", id, job.Attempt))
 
 	pattern := filepath.Join(s.cfg.LogDir, fmt.Sprintf("job-%d-attempt-*.log", id))
 	prevLogs, _ := filepath.Glob(pattern)
@@ -187,6 +199,32 @@ func (s *Server) jobLogs(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Write(data)
 	}
+}
+
+func getProcessTree(rootPid int) string {
+	out, err := exec.Command("ps", "-o", "pid,ppid,state,etime,command", "--no-headers", "-p", fmt.Sprintf("%d", rootPid)).Output()
+	if err != nil {
+		return ""
+	}
+	// Find children by scanning all processes
+	allOut, err := exec.Command("ps", "-o", "pid,ppid,state,etime,command", "--no-headers", "-e").Output()
+	if err != nil {
+		return string(out)
+	}
+	children := ""
+	rootStr := fmt.Sprintf(" %d ", rootPid)
+	for _, line := range strings.Split(string(allOut), "\n") {
+		if strings.Contains(line, rootStr) && !strings.Contains(line, "ps -o") {
+			pidStr := strings.Fields(line)
+			if len(pidStr) > 1 && pidStr[1] == fmt.Sprintf("%d", rootPid) && pidStr[0] != fmt.Sprintf("%d", rootPid) {
+				children += line + "\n"
+			}
+		}
+	}
+	if children != "" {
+		return string(out) + "\n── Children ──\n" + children
+	}
+	return string(out)
 }
 
 func (s *Server) jobRetry(w http.ResponseWriter, r *http.Request) {

@@ -439,7 +439,7 @@ func (d *DB) GetActiveJobForBranch(ctx context.Context, branch string) (*Job, er
 		FROM jobs
 		WHERE branch = ? AND state IN (
 			'queued', 'preparing_worktree', 'running_agent', 'validating', 'committing', 'pushing', 'creating_pr',
-			'applying_pr_feedback', 'waiting_for_review', 'retry_scheduled', 'cleanup_running'
+			'applying_pr_feedback', 'waiting_for_review', 'retry_scheduled', 'needs_clarification', 'cleanup_running'
 		)
 	`, branch))
 }

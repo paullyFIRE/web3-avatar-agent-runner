@@ -66,11 +66,22 @@ func (r *Runner) Run(ctx context.Context, worktreePath, promptFile string) (*Res
 	result.Summary = parseSummary(output)
 	result.FilesChanged = parseFilesChanged(output)
 	result.ValidationNotes = parseValidationNotes(output)
-	result.NeedsClarification = strings.Contains(strings.ToLower(output), "clarification needed") ||
-		strings.Contains(strings.ToLower(output), "needs clarification") ||
-		strings.Contains(strings.ToLower(output), "ambiguous")
+	result.NeedsClarification = strings.Contains(strings.ToLower(result.Summary), "clarification needed") ||
+		strings.Contains(strings.ToLower(result.Summary), "needs clarification") ||
+		strings.Contains(strings.ToLower(result.ValidationNotes), "ambiguous")
 	if result.NeedsClarification {
-		result.ClarificationMsg = extractClarification(output)
+		lowerSum := strings.ToLower(result.Summary)
+		lowerVal := strings.ToLower(result.ValidationNotes)
+		if strings.Contains(lowerSum, "no clarification needed") || strings.Contains(lowerSum, "not needed") ||
+			strings.Contains(lowerVal, "no clarification needed") || strings.Contains(lowerVal, "not needed") {
+			result.NeedsClarification = false
+		}
+	}
+	if result.NeedsClarification {
+		result.ClarificationMsg = result.Summary
+		if result.ValidationNotes != "" {
+			result.ClarificationMsg += "\n\n" + result.ValidationNotes
+		}
 	}
 
 	if errOutput != "" {

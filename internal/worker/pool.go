@@ -62,6 +62,17 @@ func (p *Pool) EnqueueImplementJob(issueNumber int, title string) error {
 		return nil
 	}
 
+	prs, err := p.gh.ListPRs()
+	if err != nil {
+		slog.Warn("enqueue: failed to check existing PRs, creating job anyway", "issue", issueNumber, "error", err)
+	} else {
+		for _, pr := range prs {
+			if pr.HeadRefName == branch {
+				return nil
+			}
+		}
+	}
+
 	_, err = p.db.CreateJob(context.Background(), db.CreateJobParams{
 		RepoOwner:   p.cfg.GitHubOwner,
 		RepoName:    p.cfg.GitHubRepo,

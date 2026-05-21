@@ -18,6 +18,13 @@ run: build frontend-build
 		REVIEW_BOTS="chatgpt-codex-connector[bot]" ./$(BINARY) start; \
 	fi
 
+run-dev: build
+	@pkill -f 'agent-runner start' 2>/dev/null; sleep 1
+	REVIEW_BOTS="chatgpt-codex-connector[bot]" ./$(BINARY) start &
+	sleep 2
+	cd frontend && npm run dev
+	@pkill -f 'agent-runner start' 2>/dev/null
+
 frontend-build:
 	cd frontend && npm run build
 
@@ -36,4 +43,4 @@ plist-install: build
 plist-uninstall:
 	./$(BINARY) plist uninstall
 
-.PHONY: build clean doctor run status jobs plist-install plist-uninstall
+.PHONY: build clean doctor run run-dev status jobs plist-install plist-uninstall frontend-build frontend-dev

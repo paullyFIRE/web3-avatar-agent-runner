@@ -242,12 +242,6 @@ func (s *Server) jobLogs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
 	// Send all previous attempt logs
 	pattern := filepath.Join(s.cfg.LogDir, fmt.Sprintf("job-%d-attempt-*.log", id))
 	prevLogs, _ := filepath.Glob(pattern)
@@ -264,43 +258,16 @@ func (s *Server) jobLogs(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "\n")
 	}
 
-	// Send current attempt header
+	// Send current attempt header and content
 	io.WriteString(w, fmt.Sprintf("\n━━━ Current attempt (attempt %d) ━━━\n\n", job.Attempt))
 
-	f, err := os.Open(currentLog)
+	data, err := os.ReadFile(currentLog)
 	if err != nil {
 		if os.IsNotExist(err) {
 			io.WriteString(w, "No logs available yet.\n")
-			flusher.Flush()
-			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer f.Close()
-
-	offset := int64(0)
-	stat, _ := f.Stat()
-	if stat != nil {
-		offset = stat.Size()
-	}
-
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case <-time.After(2 * time.Second):
-			newData := make([]byte, 4096)
-			n, err := f.ReadAt(newData, offset)
-			if n > 0 {
-				w.Write(newData[:n])
-				flusher.Flush()
-				offset += int64(n)
-			}
-			if err != nil && err != io.EOF {
-				return
-			}
-		}
+	} else {
+		w.Write(data)
 	}
 }
 

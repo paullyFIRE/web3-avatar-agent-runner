@@ -234,7 +234,7 @@ func (s *Server) jobLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logPath := filepath.Join(s.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", id, job.Attempt))
+	currentLog := filepath.Join(s.cfg.LogDir, fmt.Sprintf("job-%d-attempt-%d.log", id, job.Attempt))
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -245,7 +245,26 @@ func (s *Server) jobLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f, err := os.Open(logPath)
+	// Send all previous attempt logs
+	pattern := filepath.Join(s.cfg.LogDir, fmt.Sprintf("job-%d-attempt-*.log", id))
+	prevLogs, _ := filepath.Glob(pattern)
+	for _, p := range prevLogs {
+		if p == currentLog {
+			continue
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		io.WriteString(w, fmt.Sprintf("\n━━━ Previous attempt: %s ━━━\n\n", filepath.Base(p)))
+		w.Write(data)
+		io.WriteString(w, "\n")
+	}
+
+	// Send current attempt header
+	io.WriteString(w, fmt.Sprintf("\n━━━ Current attempt (attempt %d) ━━━\n\n", job.Attempt))
+
+	f, err := os.Open(currentLog)
 	if err != nil {
 		if os.IsNotExist(err) {
 			io.WriteString(w, "No logs available yet.\n")

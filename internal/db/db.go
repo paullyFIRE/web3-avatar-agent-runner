@@ -661,7 +661,7 @@ func (d *DB) GetStateLogs(ctx context.Context, jobID int64) ([]StateLog, error) 
 		SELECT id, job_id, from_state, to_state, message, created_at
 		FROM state_logs
 		WHERE job_id = ?
-		ORDER BY id ASC
+		ORDER BY id DESC
 	`, jobID)
 	if err != nil {
 		return nil, fmt.Errorf("query state logs: %w", err)

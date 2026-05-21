@@ -35,7 +35,7 @@
         {{if .Job.Model}}<div><div class="text-gray-500">Model</div><div class="font-mono text-xs">{{.Job.Model}}</div></div>{{end}}
         {{if .Job.WorktreePath}}<div><div class="text-gray-500">Worktree</div><div class="font-mono text-xs">{{.Job.WorktreePath}}</div></div>{{end}}
       </div>
-      {{if .Job.LastError}}
+      {{if hasError .Job.LastError}}
       <div class="mt-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
         <strong>Error:</strong> {{.Job.LastError}}
       </div>

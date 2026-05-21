@@ -100,6 +100,9 @@ func parseTemplates(cfg *config.Config) *template.Template {
 		"hasPrefix": func(s, prefix string) bool {
 			return strings.HasPrefix(s, prefix)
 		},
+		"hasError": func(s *string) bool {
+			return s != nil && *s != ""
+		},
 	}).ParseFS(templateFS, "*.html"))
 }
 

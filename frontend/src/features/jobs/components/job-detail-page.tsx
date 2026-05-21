@@ -75,6 +75,18 @@ export function JobDetailPage() {
                   <strong>Error:</strong> {job.last_error}
                 </div>
               )}
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={async () => {
+                    if (!window.confirm('Delete this job, kill the agent, and remove its branch?')) return;
+                    await fetch(`/api/jobs/${job.id}/delete`, { method: 'POST' });
+                    window.location.href = '/jobs';
+                  }}
+                  className="px-3 py-1 rounded bg-red-500 text-white text-xs hover:bg-red-600"
+                >
+                  Delete
+                </button>
+              </div>
             </CardContent>
           </Card>
 

@@ -640,6 +640,12 @@ func (d *DB) ResetJobForRetry(ctx context.Context, id int64) error {
 	return err
 }
 
+func (d *DB) DeleteJob(ctx context.Context, id int64) error {
+	d.LogState(ctx, id, "", "deleted", "job deleted by user")
+	_, err := d.conn.ExecContext(ctx, `DELETE FROM jobs WHERE id = ?`, id)
+	return err
+}
+
 type StateLog struct {
 	ID        int64      `json:"id"`
 	JobID     int64      `json:"job_id"`

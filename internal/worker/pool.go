@@ -804,10 +804,7 @@ func (p *Pool) findOrCreatePR(branch string, issueNumber int, title, body string
 	prs, err := p.gh.ListPRs()
 	if err == nil {
 		for _, pr := range prs {
-			if pr.HeadRefName == branch {
-				if pr.State == "MERGED" {
-					return &pr.Number, pr.URL, nil
-				}
+			if pr.HeadRefName == branch && pr.State == "OPEN" {
 				p.gh.CommentIssue(issueNumber, fmt.Sprintf("Updated PR: %s", pr.URL))
 				return &pr.Number, pr.URL, nil
 			}

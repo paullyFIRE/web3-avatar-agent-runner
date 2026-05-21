@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -64,6 +65,7 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/api/jobs/{id}", s.apiJobDetail)
 	r.Get("/api/jobs/{id}/states", s.apiJobStates)
 	r.Get("/api/jobs/{id}/logs", s.jobLogs)
+	r.Post("/api/jobs/{id}/delete", s.jobDelete)
 
 	// Root redirects to the new UI
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -201,8 +203,33 @@ func (s *Server) jobLogs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getProcessTree(rootPid int) string {
-	out, err := exec.Command("ps", "-o", "pid,ppid,state,etime,command", "--no-headers", "-p", fmt.Sprintf("%d", rootPid)).Output()
+func (s *Server) jobDelete(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		jsonResp(w, map[string]string{"error": "invalid id"})
+		return
+	}
+
+	job, _ := s.db.GetJob(r.Context(), id)
+	if job == nil {
+		jsonResp(w, map[string]string{"error": "not found"})
+		return
+	}
+
+	if job.PID != nil && *job.PID > 0 {
+		syscall.Kill(*job.PID, syscall.SIGTERM)
+	}
+
+	if job.Branch != nil {
+		exec.Command("git", "push", "origin", "--delete", *job.Branch).Run()
+	}
+
+	s.db.DeleteJob(r.Context(), id)
+	jsonResp(w, map[string]string{"status": "deleted"})
+}
+
+func getProcessTree(rootPid int) string {	out, err := exec.Command("ps", "-o", "pid,ppid,state,etime,command", "--no-headers", "-p", fmt.Sprintf("%d", rootPid)).Output()
 	if err != nil {
 		return ""
 	}

@@ -2,3 +2,5 @@ agent-runner
 *.log
 .runner.sqlite
 .opencode-prompt.md
+.opencode-prompt.md
+HANDOVER-*.md

@@ -177,13 +177,9 @@ func (p *Pool) RecoverHangingJobs(ctx context.Context) {
 	}
 	for _, job := range jobs {
 		if job.PID != nil && *job.PID > 0 {
-			if err := syscall.Kill(*job.PID, 0); err == nil {
-				slog.Info("hanging recovery skipped — agent process alive",
-					"job_id", job.ID, "pid", *job.PID)
-				continue
-			}
+			syscall.Kill(*job.PID, syscall.SIGTERM)
 		}
-		slog.Warn("force-recovering hanging job — no live agent process",
+		slog.Warn("force-recovering hanging job",
 			"job_id", job.ID, "state", job.State)
 		p.db.ResetJobForRetry(ctx, job.ID)
 	}

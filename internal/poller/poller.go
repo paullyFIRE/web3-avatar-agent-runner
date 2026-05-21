@@ -236,11 +236,7 @@ func (p *Poller) recoverStaleJobs(ctx context.Context) error {
 
 	for _, job := range jobs {
 		if job.PID != nil && *job.PID > 0 {
-			if err := syscall.Kill(*job.PID, 0); err == nil {
-				p.logger.Info("skipping stale recovery — agent process still alive",
-					"job_id", job.ID, "pid", *job.PID)
-				continue
-			}
+			syscall.Kill(*job.PID, syscall.SIGTERM)
 		}
 
 		p.logger.Warn("recovering stale job", "job_id", job.ID, "state", job.State)

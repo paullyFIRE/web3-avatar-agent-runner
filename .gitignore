@@ -4,3 +4,5 @@ agent-runner
 .opencode-prompt.md
 .opencode-prompt.md
 HANDOVER-*.md
+frontend/node_modules
+frontend/dist

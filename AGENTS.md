@@ -5,8 +5,9 @@ Local daemon that polls GitHub issues, runs OpenCode Go agents to implement fixe
 ## Architecture
 
 - **Language**: Go. Single binary (`agent-runner`).
-- **Persistence**: SQLite via `runner.sqlite`.
-- **Dashboard**: Go server-rendered HTML + Tailwind + HTMX.
+- **Dashboard (legacy)**: Go server-rendered HTML + Tailwind + HTMX (at /dashboard, /jobs, /heartbeats, /agents).
+- **Dashboard (new)**: Vite + React + TypeScript + Tailwind + TanStack Query SPA at `/ui/`. JSON API at `/api/`.
+- **Frontend stack**: React 19, TypeScript, Tailwind CSS 3, shadcn/ui primitives, TanStack Query, Lucide React icons, react-router-dom v7. Feature-based architecture under `frontend/src/features/`. Built with `make frontend-build` or `cd frontend && npm run build`. Dev mode with `make frontend-dev` for Vite HMR proxy on port 5173.
 - **GitHub**: Local `gh` CLI only — no API tokens, no webhooks, no GitHub Actions.
 - **Agent**: `opencode` binary invoked per-issue with `--prompt-file`.
 - **Daemon**: macOS `launchd` plist.
@@ -48,8 +49,16 @@ internal/
   worker/   job pool (max 2), implement/feedback/cleanup flows, retry logic
   poller/   30s ticker polls issues, PRs, comments, stale jobs
   daemon/   orchestrator with graceful shutdown, dashboard HTTP server
-  dashboard/ Tailwind CDN + HTMX server-rendered routes
+  dashboard/ Tailwind CDN + HTMX server-rendered routes (legacy), JSON API
   cli/      command dispatch for doctor, start, status, jobs, logs, retry, cancel, cleanup, plist
+frontend/
+  src/
+    app/      providers (TanStack Query)
+    components/ui/ shadcn-style primitives (Button, Badge, Card)
+    components/layout/ Nav
+    features/jobs/ job list + detail pages
+    features/agents/ heartbeat page
+    lib/      cn, env, http utilities
 ```
 
 ## Gotchas (hard-earned)

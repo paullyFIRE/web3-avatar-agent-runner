@@ -88,8 +88,16 @@ func (r *Runner) Run(ctx context.Context, worktreePath, promptFile, logPath stri
 	if result.NeedsClarification {
 		lowerSum := strings.ToLower(result.Summary)
 		lowerVal := strings.ToLower(result.ValidationNotes)
-		if strings.Contains(lowerSum, "no clarification needed") || strings.Contains(lowerSum, "not needed") ||
-			strings.Contains(lowerVal, "no clarification needed") || strings.Contains(lowerVal, "not needed") {
+		if strings.Contains(lowerSum, "no clarification needed") ||
+			strings.Contains(lowerSum, "clarification needed: no") ||
+			strings.Contains(lowerSum, "clarification needed: none") ||
+			strings.Contains(lowerSum, "clarification needed: false") ||
+			strings.Contains(lowerSum, "not needed") ||
+			strings.Contains(lowerVal, "no clarification needed") ||
+			strings.Contains(lowerVal, "clarification needed: no") ||
+			strings.Contains(lowerVal, "clarification needed: none") ||
+			strings.Contains(lowerVal, "clarification needed: false") ||
+			strings.Contains(lowerVal, "not needed") {
 			result.NeedsClarification = false
 		}
 	}

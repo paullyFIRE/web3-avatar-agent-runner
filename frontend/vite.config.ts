@@ -4,7 +4,7 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/ui/',
+  base: process.env.NODE_ENV === 'production' ? '/ui/' : '/',
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },

@@ -5,9 +5,11 @@ import { JobsListPage } from '@/features/jobs/components/jobs-list';
 import { JobDetailPage } from '@/features/jobs/components/job-detail-page';
 import { HeartbeatsPage } from '@/features/agents/components/heartbeats-page';
 
+const basename = window.location.pathname.startsWith('/ui') ? '/ui' : '/';
+
 export function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <Providers>
         <div className="min-h-screen bg-gray-50">
           <Nav />

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { fetchJobs, fetchStatus } from '../api';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { fmtDate } from '@/lib/cn';
 import { Activity, AlertCircle, CheckCircle, Clock, Play, Loader2 } from 'lucide-react';
 
 function StatCard({
@@ -95,7 +96,7 @@ export function JobsListPage() {
                   </td>
                   <td className="px-4 py-2"><Badge state={job.state} /></td>
                   <td className="px-4 py-2">{job.attempt}/{job.max_attempts}</td>
-                  <td className="px-4 py-2 text-gray-500">{new Date(job.created_at).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-gray-500">{fmtDate(job.created_at)}</td>
                   <td className="px-4 py-2">
                     <Link to={`/jobs/${job.id}`} className="text-blue-600 hover:underline text-xs">
                       View

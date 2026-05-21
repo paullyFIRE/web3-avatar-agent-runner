@@ -5,7 +5,7 @@ import { fetchJob } from '@/features/jobs/api';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Loader2, Activity } from 'lucide-react';
-import { cn } from '@/lib/cn';
+import { cn, fmtDate } from '@/lib/cn';
 
 export function HeartbeatsPage() {
   const { data: jobs, isLoading } = useQuery({
@@ -59,7 +59,7 @@ export function HeartbeatsPage() {
               <Activity className="h-3 w-3 text-gray-400" />
               <span className="text-xs text-gray-500">
                 {job.heartbeat_at
-                  ? new Date(job.heartbeat_at).toLocaleString()
+                  ? fmtDate(job.heartbeat_at)
                   : '-'}
               </span>
             </div>
@@ -83,7 +83,7 @@ export function HeartbeatsPage() {
                 </div>
                 <div className="text-xs text-gray-500">
                   {selectedJob.heartbeat_at && (
-                    <>Last heartbeat: {new Date(selectedJob.heartbeat_at).toLocaleString()}</>
+                    <>Last heartbeat: {fmtDate(selectedJob.heartbeat_at)}</>
                   )}
                   {selectedJob.pid && <> · PID {selectedJob.pid}</>}
                 </div>

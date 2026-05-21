@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { fetchJob, fetchJobStates } from '../api';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { fmtDate } from '@/lib/cn';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -64,10 +65,10 @@ export function JobDetailPage() {
                 <div><div className="text-gray-500">PR</div><div className="font-mono">{job.pr_number ? `#${job.pr_number}` : '-'}</div></div>
                 <div><div className="text-gray-500">State</div><div><Badge state={job.state} /></div></div>
                 <div><div className="text-gray-500">Attempt</div><div>{job.attempt}/{job.max_attempts}</div></div>
-                <div><div className="text-gray-500">Created</div><div className="text-xs">{new Date(job.created_at).toLocaleString()}</div></div>
+                <div><div className="text-gray-500">Created</div><div className="text-xs">{fmtDate(job.created_at)}</div></div>
                 {job.branch && <div><div className="text-gray-500">Branch</div><div className="font-mono text-xs">{job.branch}</div></div>}
                 {job.pid && <div><div className="text-gray-500">PID</div><div className="font-mono">{job.pid}</div></div>}
-                {job.heartbeat_at && <div><div className="text-gray-500">Heartbeat</div><div className="text-xs">{new Date(job.heartbeat_at).toLocaleString()}</div></div>}
+                {job.heartbeat_at && <div><div className="text-gray-500">Heartbeat</div><div className="text-xs">{fmtDate(job.heartbeat_at)}</div></div>}
               </div>
               {job.last_error && (
                 <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
@@ -91,7 +92,7 @@ export function JobDetailPage() {
           <Card>
             <CardContent className="p-3">
               <h3 className="text-sm font-semibold mb-3">State Timeline</h3>
-              <div className="space-y-0">
+              <div className="space-y-0 overflow-y-auto max-h-[calc(100vh-16rem)]">
                 {states?.slice().reverse().map((s) => (
                   <div key={s.id} className="flex gap-2 py-1.5 border-l-2 border-gray-300 pl-3">
                     <div className="text-xs">
@@ -103,7 +104,7 @@ export function JobDetailPage() {
                         <span className="text-xs font-mono bg-gray-100 px-1 rounded">{s.to_state}</span>
                       </div>
                       {s.message && <div className="text-gray-600 mt-0.5 text-xs">{s.message}</div>}
-                      <div className="text-gray-400 mt-0.5 text-xs">{new Date(s.created_at).toLocaleString()}</div>
+                      <div className="text-gray-400 mt-0.5 text-xs">{fmtDate(s.created_at)}</div>
                     </div>
                   </div>
                 ))}

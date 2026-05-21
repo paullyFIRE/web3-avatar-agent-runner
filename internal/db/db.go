@@ -632,6 +632,14 @@ func (d *DB) UpdateAgentHeartbeat(ctx context.Context, agentID int64) error {
 	return err
 }
 
+func (d *DB) ResetJobForRetry(ctx context.Context, id int64) error {
+	_, err := d.conn.ExecContext(ctx, `
+		UPDATE jobs SET state='queued', attempt=0, last_error='', pid=NULL, heartbeat_at=NULL, current_phase=NULL, finished_at=NULL, next_retry_at=NULL
+		WHERE id = ?
+	`, id)
+	return err
+}
+
 type StateLog struct {
 	ID        int64      `json:"id"`
 	JobID     int64      `json:"job_id"`

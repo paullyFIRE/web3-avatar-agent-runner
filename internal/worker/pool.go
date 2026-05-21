@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/paullyFIRE/web3-avatar-agent-runner/internal/agent"
@@ -161,6 +162,30 @@ func (p *Pool) EnqueueCleanupJob(issueNumber int, prNumber int) error {
 		Model:       p.cfg.OpenCodeModel,
 	})
 	return err
+}
+
+func (p *Pool) RecoverHangingJobs(ctx context.Context) {
+	runningStates := []string{
+		"preparing_worktree", "running_agent", "validating", "committing",
+		"pushing", "creating_pr", "applying_pr_feedback", "cleanup_running",
+	}
+	jobs, err := p.db.GetJobsByState(ctx, runningStates...)
+	if err != nil {
+		slog.Error("recover hanging jobs: list", "error", err)
+		return
+	}
+	for _, job := range jobs {
+		if job.PID != nil && *job.PID > 0 {
+			if err := syscall.Kill(*job.PID, 0); err == nil {
+				slog.Info("hanging recovery skipped — agent process alive",
+					"job_id", job.ID, "pid", *job.PID)
+				continue
+			}
+		}
+		slog.Warn("force-recovering hanging job — no live agent process",
+			"job_id", job.ID, "state", job.State)
+		p.db.ResetJobForRetry(ctx, job.ID)
+	}
 }
 
 func (p *Pool) claimLoop(ctx context.Context) {

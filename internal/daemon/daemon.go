@@ -92,6 +92,8 @@ func (d *Daemon) Start() error {
 		"poll_interval", d.cfg.PollIntervalSeconds,
 	)
 
+	d.pool.RecoverHangingJobs(d.ctx)
+
 	d.pool.Start(d.ctx)
 
 	go d.poller.Run(d.ctx)
